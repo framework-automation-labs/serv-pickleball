@@ -8,6 +8,8 @@ import {
   formatHour,
   isHourBooked,
 } from '../lib/api'
+import BackButton from '../components/BackButton.jsx'
+import DatePicker from '../components/DatePicker.jsx'
 
 const RATE_PER_HOUR = 300
 
@@ -15,6 +17,15 @@ function todayISO() {
   const d = new Date()
   const local = new Date(d.getTime() - d.getTimezoneOffset() * 60000)
   return local.toISOString().split('T')[0]
+}
+
+const gridVariants = {
+  hidden: {},
+  show: { transition: { staggerChildren: 0.02 } },
+}
+const slotVariants = {
+  hidden: { opacity: 0, y: 8 },
+  show: { opacity: 1, y: 0 },
 }
 
 export default function Booking() {
@@ -57,7 +68,6 @@ export default function Booking() {
   function handleSlotClick(hour) {
     if (isHourBooked(selectedCourtId, hour, availability)) return
 
-    // clicking the only selected slot again clears it
     if (rangeStart === hour && rangeEnd === hour) {
       clearSelection()
       return
@@ -103,28 +113,25 @@ export default function Booking() {
 
   return (
     <div className="min-h-screen bg-mist pb-32">
-      <div className="bg-court-dark px-6 py-8 sm:px-10">
-        <p className="text-spark font-display text-sm font-semibold tracking-widest uppercase mb-1">
-          SE<span className="text-white">.</span>RV
-        </p>
+      <div className="relative bg-court-dark px-6 py-8 sm:px-10">
+        <BackButton variant="light" className="mb-4" to="/" />
+        <img
+          src="/serv-logo.png"
+          alt="SERV Pickleball Club"
+          className="absolute top-4 right-4 sm:top-6 sm:right-8 h-8 sm:h-20"
+        />
         <h1 className="font-display font-bold text-3xl text-white mb-1">Book a Court</h1>
         <p className="text-court-light">₱{RATE_PER_HOUR}/hr · 9:00 AM – 12:00 Midnight</p>
       </div>
 
-      <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-10 -mt-6">
+      <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-10 mt-6">
         <div className="bg-white rounded-2xl shadow-sm border border-line p-4 sm:p-6 mb-6">
           <label className="block text-xs font-semibold text-ink/60 uppercase tracking-wide mb-2">
             Date
           </label>
-          <input
-            type="date"
-            value={date}
-            min={todayISO()}
-            onChange={(e) => setDate(e.target.value)}
-            className="w-full sm:w-56 border border-line rounded-lg px-3 py-2 mb-5 focus:outline-none focus:ring-2 focus:ring-court"
-          />
+          <DatePicker value={date} onChange={setDate} />
 
-          <label className="block text-xs font-semibold text-ink/60 uppercase tracking-wide mb-2">
+          <label className="block text-xs font-semibold text-ink/60 uppercase tracking-wide mb-2 mt-5">
             Court
           </label>
           <div className="flex gap-2 flex-wrap">
@@ -167,28 +174,38 @@ export default function Booking() {
           {loading ? (
             <p className="text-ink/40 text-sm py-6 text-center">Loading availability…</p>
           ) : (
-            <div className="grid grid-cols-3 sm:grid-cols-5 gap-2">
-              {slots.map((hour) => {
-                const booked = isHourBooked(selectedCourtId, hour, availability)
-                const selected = isInRange(hour)
-                return (
-                  <button
-                    key={hour}
-                    disabled={booked}
-                    onClick={() => handleSlotClick(hour)}
-                    className={`py-3 rounded-xl text-sm font-semibold font-display border-2 transition-all ${
-                      booked
-                        ? 'bg-mist text-ink/20 border-mist cursor-not-allowed line-through'
-                        : selected
-                        ? 'bg-spark text-ink border-spark shadow-md shadow-spark/30 scale-[1.03]'
-                        : 'bg-white text-ink/70 border-line hover:border-court'
-                    }`}
-                  >
-                    {formatHour(hour)}
-                  </button>
-                )
-              })}
-            </div>
+            <AnimatePresence mode="wait">
+              <motion.div
+                key={`${selectedCourtId}-${date}`}
+                variants={gridVariants}
+                initial="hidden"
+                animate="show"
+                className="grid grid-cols-3 sm:grid-cols-5 gap-2"
+              >
+                {slots.map((hour) => {
+                  const booked = isHourBooked(selectedCourtId, hour, availability)
+                  const selected = isInRange(hour)
+                  return (
+                    <motion.button
+                      key={hour}
+                      variants={slotVariants}
+                      whileTap={!booked ? { scale: 0.92 } : {}}
+                      disabled={booked}
+                      onClick={() => handleSlotClick(hour)}
+                      className={`py-3 rounded-xl text-sm font-semibold font-display border-2 transition-colors ${
+                        booked
+                          ? 'bg-mist text-ink/20 border-mist cursor-not-allowed line-through'
+                          : selected
+                          ? 'bg-spark text-white border-spark shadow-md shadow-spark/30'
+                          : 'bg-white text-ink/70 border-line hover:border-court'
+                      }`}
+                    >
+                      {formatHour(hour)}
+                    </motion.button>
+                  )
+                })}
+              </motion.div>
+            </AnimatePresence>
           )}
         </div>
       </div>
@@ -211,7 +228,7 @@ export default function Booking() {
               </div>
               <button
                 onClick={handleContinue}
-                className="bg-spark text-ink font-display font-semibold px-8 py-3 rounded-full hover:brightness-95 active:scale-[0.98] transition-all"
+                className="bg-spark text-white font-display font-semibold px-8 py-3 rounded-full hover:brightness-110 active:scale-[0.98] transition-all"
               >
                 Continue
               </button>

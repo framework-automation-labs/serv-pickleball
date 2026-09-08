@@ -1,6 +1,7 @@
 import { motion } from 'motion/react'
 import { Link } from 'react-router-dom'
 import AboutSection from '../components/AboutSection.jsx'
+import JerseySection from '../components/JerseySection.jsx'
 import Footer from '../components/Footer.jsx'
 
 function scrollToAbout() {
@@ -25,14 +26,14 @@ export default function Home() {
           Mambajao · Maasin City
         </motion.p>
 
-        <motion.h1
+        <motion.img
+          src="/serv-logo.png"
+          alt="SERV Pickleball Club"
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.5, delay: 0.1 }}
-          className="relative font-display font-bold text-5xl sm:text-7xl text-white leading-[0.95] mb-6"
-        >
-          SE<span className="text-spark">.</span>RV
-        </motion.h1>
+          className="relative w-64 sm:w-45 mb-4"
+        />
 
         <motion.p
           initial={{ opacity: 0, y: 20 }}
@@ -47,30 +48,38 @@ export default function Home() {
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.5, delay: 0.3 }}
-          className="relative"
+          className="relative flex flex-col items-center gap-4"
         >
-          <Link
-            to="/book"
-            className="inline-block bg-spark text-white font-display font-semibold px-10 py-4 rounded-full hover:brightness-110 active:scale-[0.98] transition-all shadow-lg shadow-spark/20"
+          <motion.div
+            animate={{
+              boxShadow: [
+                '0 0 0px 0px rgba(232,115,92,0.5)',
+                '0 0 32px 10px rgba(232,115,92,0.45)',
+                '0 0 0px 0px rgba(232,115,92,0.5)',
+              ],
+            }}
+            transition={{ duration: 2, repeat: Infinity, ease: 'easeInOut' }}
+            className="rounded-full inline-block"
           >
-            Book a Court
-          </Link>
-        </motion.div>
+            <Link
+              to="/book"
+              className="inline-block bg-spark text-white font-display font-semibold px-10 py-4 rounded-full hover:brightness-110 active:scale-[0.98] transition-all"
+            >
+              Book a Court
+            </Link>
+          </motion.div>
 
-        <motion.button
-          onClick={scrollToAbout}
-          aria-label="Scroll to learn more"
-          className="relative mt-14 text-white/70 hover:text-white transition-colors"
-          animate={{ y: [0, 8, 0] }}
-          transition={{ duration: 1.6, repeat: Infinity, ease: 'easeInOut' }}
-        >
-          <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <path d="M6 9l6 6 6-6" strokeLinecap="round" strokeLinejoin="round" />
-          </svg>
-        </motion.button>
+          <button
+            onClick={scrollToAbout}
+            className="border border-white/40 text-white/80 font-display text-sm px-6 py-2 rounded-full hover:bg-white/10 hover:text-white transition-colors"
+          >
+            About Us
+          </button>
+        </motion.div>
       </section>
 
       <AboutSection />
+      <JerseySection />
       <Footer />
     </div>
   )

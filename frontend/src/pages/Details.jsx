@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { formatHour } from '../lib/api'
+import BackButton from '../components/BackButton.jsx'
 
 export default function Details() {
   const { state } = useLocation()
@@ -38,6 +39,7 @@ export default function Details() {
   return (
     <div className="min-h-screen bg-mist px-6 py-10">
       <div className="max-w-md mx-auto">
+        <BackButton className="mb-4" />
         <h1 className="font-display font-bold text-2xl text-ink mb-1">Your Details</h1>
         <p className="text-ink/50 text-sm mb-6">We'll use this to confirm your booking.</p>
 

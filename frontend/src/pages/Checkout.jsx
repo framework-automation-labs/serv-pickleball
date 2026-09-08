@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { formatHour } from '../lib/api'
+import BackButton from '../components/BackButton.jsx'
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000'
 
@@ -46,7 +47,8 @@ export default function Checkout() {
   return (
     <div className="min-h-screen bg-mist px-6 py-10">
       <div className="max-w-md mx-auto">
-        <h1 className="font-display font-bold text-2xl text-ink mb-6">Confirm & Pay</h1>
+        <BackButton className="mb-4" />
+          <h1 className="font-display font-bold text-2xl text-ink mb-6">Confirm & Pay</h1>
 
         <div className="bg-white rounded-2xl shadow-sm border border-line p-5 mb-6 space-y-2 text-sm">
           <div className="flex justify-between">

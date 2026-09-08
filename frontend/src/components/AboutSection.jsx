@@ -1,6 +1,18 @@
-import { motion } from 'motion/react'
+import { useEffect, useState } from 'react'
+import { motion, AnimatePresence } from 'motion/react'
+
+const images = ['/serv-about.jpg', '/serv-about-2.jpg', '/serv-gallery-1.jpg', '/serv-gallery-2.jpg']
 
 export default function AboutSection() {
+  const [index, setIndex] = useState(0)
+
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setIndex((i) => (i + 1) % images.length)
+    }, 3000)
+    return () => clearInterval(timer)
+  }, [])
+
   return (
     <section id="about" className="bg-white px-6 py-20">
       <div className="max-w-5xl mx-auto grid gap-10 sm:grid-cols-2 items-center">
@@ -9,13 +21,33 @@ export default function AboutSection() {
           whileInView={{ opacity: 1, x: 0 }}
           viewport={{ once: true, amount: 0.4 }}
           transition={{ duration: 0.5 }}
-          className="rounded-2xl overflow-hidden aspect-[4/3]"
+          className="relative rounded-2xl overflow-hidden aspect-[4/3]"
         >
-          <img
-            src="/serv-about.jpg"
-            alt="Players on SERV pickleball courts"
-            className="w-full h-full object-cover"
-          />
+          <AnimatePresence mode="wait">
+            <motion.img
+              key={images[index]}
+              src={images[index]}
+              alt="SERV Pickleball Club"
+              initial={{ opacity: 0, x: 40 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: -40 }}
+              transition={{ duration: 0.6, ease: 'easeInOut' }}
+              className="absolute inset-0 w-full h-full object-cover"
+            />
+          </AnimatePresence>
+
+          <div className="absolute bottom-3 left-0 right-0 flex justify-center gap-1.5">
+            {images.map((_, i) => (
+              <button
+                key={i}
+                onClick={() => setIndex(i)}
+                aria-label={`Show photo ${i + 1}`}
+                className={`h-1.5 rounded-full transition-all ${
+                  i === index ? 'bg-white w-4' : 'bg-white/50 w-1.5'
+                }`}
+              />
+            ))}
+          </div>
         </motion.div>
 
         <motion.div

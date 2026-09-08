@@ -1,11 +1,9 @@
 export default function Footer() {
   return (
     <footer className="bg-court-dark text-court-light px-6 py-12">
-      <div className="max-w-5xl mx-auto grid gap-10 sm:grid-cols-3">
+      <div className="max-w-5xl mx-auto grid gap-10 sm:grid-cols-3 mb-10">
         <div>
-          <p className="font-display font-bold text-2xl text-white mb-2">
-            SE<span className="text-spark">.</span>RV
-          </p>
+          <img src="/serv-logo.png" alt="SERV Pickleball Club" className="h-20 mb-0" />
           <p className="text-sm">Pickleball Club</p>
         </div>
 
@@ -44,6 +42,18 @@ export default function Footer() {
             </a>
           </div>
         </div>
+      </div>
+
+      <div className="max-w-5xl mx-auto rounded-2xl overflow-hidden border border-white/10">
+        <iframe
+          title="SERV Pickleball Club location"
+          src="https://www.google.com/maps?q=K.+Kangleon+St.,+Mambajao,+Maasin+City,+Southern+Leyte,+Philippines&output=embed"
+          width="100%"
+          height="250"
+          style={{ border: 0 }}
+          loading="lazy"
+          referrerPolicy="no-referrer-when-downgrade"
+        />
       </div>
 
       <p className="text-center text-xs text-court-light/50 mt-10">
