@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { formatHour } from '../lib/api'
 import BackButton from '../components/BackButton.jsx'
+import PolicyNotice from '../components/PolicyNotice.jsx'
 
 export default function Details() {
   const { state } = useLocation()
@@ -10,7 +11,7 @@ export default function Details() {
   const [phone, setPhone] = useState('')
   const [error, setError] = useState('')
 
-  if (!state) {
+  if (!state || !state.bookings?.length) {
     return (
       <div className="min-h-screen bg-mist flex items-center justify-center px-6 text-center">
         <div>
@@ -23,7 +24,7 @@ export default function Details() {
     )
   }
 
-  const { courtName, date, startHour, endHour, durationHours, totalPrice } = state
+  const { date, bookings, totalHours, totalPrice } = state
 
   function handleSubmit(e) {
     e.preventDefault()
@@ -43,12 +44,22 @@ export default function Details() {
         <h1 className="font-display font-bold text-2xl text-ink mb-1">Your Details</h1>
         <p className="text-ink/50 text-sm mb-6">We'll use this to confirm your booking.</p>
 
-        <div className="bg-white rounded-2xl shadow-sm border border-line p-4 mb-6 text-sm">
-          <p className="font-semibold text-ink">{courtName}</p>
-          <p className="text-ink/60">
-            {date} · {formatHour(startHour)} – {formatHour(endHour)} ({durationHours}h) · ₱{totalPrice}
-          </p>
+        <div className="bg-white rounded-2xl shadow-sm border border-line p-4 mb-4 text-sm space-y-1.5">
+          <p className="text-ink/50 mb-1">{date}</p>
+          {bookings.map((b, i) => (
+            <p key={i} className="font-semibold text-ink">
+              {b.courtName} · {formatHour(b.startHour)} – {formatHour(b.endHour)} ({b.hours}h)
+            </p>
+          ))}
+          <div className="border-t border-line pt-2 mt-2 flex justify-between">
+            <span className="text-ink/50">
+              {totalHours} {totalHours === 1 ? 'hour' : 'hours'} total
+            </span>
+            <span className="font-display font-bold text-court-dark">₱{totalPrice}</span>
+          </div>
         </div>
+
+        <PolicyNotice className="mb-6" />
 
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
