@@ -1,12 +1,12 @@
 {
   "name": "serv-pickleball-frontend",
-  "homepage": "https://YOUR_GITHUB_USERNAME.github.io/serv-pickleball",
+  "homepage": "https://framework-automation-labs.github.io/serv-pickleball",
   "private": true,
   "version": "0.1.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "vite build",
+    "build": "vite build && cp dist/index.html dist/404.html",
     "preview": "vite preview",
     "predeploy": "npm run build",
     "deploy": "gh-pages -d dist"
