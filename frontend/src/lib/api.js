@@ -14,12 +14,22 @@ export async function fetchCourts() {
 }
 
 export async function fetchAvailability(date) {
-  const { data, error } = await supabase
-    .from('public_availability')
-    .select('*')
-    .eq('booking_date', date)
-  if (error) throw error
-  return data
+  const [{ data: booked, error: bookedError }, { data: blocked, error: blockedError }] = await Promise.all([
+    supabase.from('public_availability').select('*').eq('booking_date', date),
+    supabase.from('blocked_slots').select('court_id, blocked_date, start_time, end_time').eq('blocked_date', date),
+  ])
+  if (bookedError) throw bookedError
+  if (blockedError) throw blockedError
+
+  const blockedAsAvailability = (blocked || []).map((b) => ({
+    court_id: b.court_id,
+    booking_date: b.blocked_date,
+    start_time: b.start_time,
+    end_time: b.end_time,
+    status: 'blocked',
+  }))
+
+  return [...(booked || []), ...blockedAsAvailability]
 }
 
 export function generateHourSlots() {
@@ -42,4 +52,53 @@ export function isHourBooked(courtId, hour, availability) {
     const endHour = parseInt(b.end_time.split(':')[0], 10)
     return hour >= startHour && hour < endHour
   })
+}
+
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000'
+
+// Submits a booking (one or more court/time blocks) together with the
+// GCash receipt screenshot. Returns { bookingGroupId, referenceCode }
+// on success, or throws with a user-facing message on failure.
+export async function submitBookingWithReceipt({ fullName, phone, email, bookings, receiptFile }) {
+  const formData = new FormData()
+  formData.append('payload', JSON.stringify({ fullName, phone, email, bookings }))
+  formData.append('receipt', receiptFile)
+
+  const res = await fetch(`${API_URL}/api/bookings`, { method: 'POST', body: formData })
+  const data = await res.json().catch(() => ({}))
+  if (!res.ok) throw new Error(data.error || 'Could not submit your booking. Please try again.')
+  return data
+}
+
+export async function fetchBookingStatus(groupId) {
+  const res = await fetch(`${API_URL}/api/bookings/${groupId}/status`)
+  const data = await res.json().catch(() => ({}))
+  if (!res.ok) throw new Error(data.error || 'Could not load this booking.')
+  return data
+}
+
+// Admin-only — approving/rejecting a receipt also sends the customer
+// an email, so these go through the backend (which verifies the
+// caller is really an admin) instead of a direct Supabase update.
+async function authedPatch(path, body) {
+  const {
+    data: { session },
+  } = await supabase.auth.getSession()
+  if (!session) throw new Error('Your admin session has expired — please log in again.')
+
+  const res = await fetch(`${API_URL}${path}`, {
+    method: 'PATCH',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${session.access_token}`,
+    },
+    body: JSON.stringify(body),
+  })
+  const data = await res.json().catch(() => ({}))
+  if (!res.ok) throw new Error(data.error || 'Something went wrong.')
+  return data
+}
+
+export function reviewBookingGroup(groupId, action, reason) {
+  return authedPatch(`/api/bookings/${groupId}/review`, { action, reason })
 }

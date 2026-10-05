@@ -3,6 +3,8 @@ import { useNavigate, useLocation, Navigate } from 'react-router-dom'
 import { motion } from 'motion/react'
 import { useAdminAuth } from '../../context/AdminAuthContext.jsx'
 
+const logoUrl = `${import.meta.env.BASE_URL}serv-logo.png`
+
 export default function AdminLogin() {
   const { session, isAdmin, loading: authLoading, signIn } = useAdminAuth()
   const navigate = useNavigate()
@@ -45,7 +47,7 @@ export default function AdminLogin() {
         className="w-full max-w-sm"
       >
         <div className="text-center mb-8">
-          <img src="/serv-logo.png" alt="SERV Pickleball Club" className="h-16 mx-auto mb-4" />
+            <img src={logoUrl} alt="SERV Pickleball Club" className="h-16 mx-auto mb-4" />
           <p className="text-spark font-display font-semibold tracking-widest text-xs uppercase">
             Admin Access
           </p>

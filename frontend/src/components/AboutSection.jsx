@@ -1,7 +1,28 @@
 import { useEffect, useState } from 'react'
 import { motion, AnimatePresence } from 'motion/react'
 
-const images = ['/serv-about.jpg', '/serv-about-2.jpg', '/serv-gallery-1.jpg', '/serv-gallery-2.jpg']
+const assetUrl = (name) => `${import.meta.env.BASE_URL}${name}`
+const images = ['serv-about.jpg', 'serv-about-2.jpg', 'serv-gallery-1.jpg', 'serv-gallery-2.jpg'].map(assetUrl)
+const experiences = [
+  {
+    number: '01',
+    title: 'Play',
+    description: 'Professional indoor pickleball courts built for real play.',
+    image: 'serv-about.jpg',
+  },
+  {
+    number: '02',
+    title: 'Compete',
+    description: 'Friendly matches and challenges that keep the game moving.',
+    image: 'serv-about-2.jpg',
+  },
+  {
+    number: '03',
+    title: 'Connect',
+    description: 'A community built around the game and the people who play it.',
+    image: 'serv-hero.jpg',
+  },
+]
 
 export default function AboutSection() {
   const [index, setIndex] = useState(0)
@@ -14,68 +35,135 @@ export default function AboutSection() {
   }, [])
 
   return (
-    <section id="about" className="bg-white px-6 py-20">
-      <div className="max-w-5xl mx-auto grid gap-10 sm:grid-cols-2 items-center">
-        <motion.div
-          initial={{ opacity: 0, x: -20 }}
-          whileInView={{ opacity: 1, x: 0 }}
-          viewport={{ once: true, amount: 0.4 }}
-          transition={{ duration: 0.5 }}
-          className="relative rounded-2xl overflow-hidden aspect-[4/3]"
-        >
-          <AnimatePresence mode="wait">
-            <motion.img
-              key={images[index]}
-              src={images[index]}
-              alt="SERV Pickleball Club"
-              initial={{ opacity: 0, x: 40 }}
-              animate={{ opacity: 1, x: 0 }}
-              exit={{ opacity: 0, x: -40 }}
-              transition={{ duration: 0.6, ease: 'easeInOut' }}
-              className="absolute inset-0 w-full h-full object-cover"
-            />
-          </AnimatePresence>
-
-          <div className="absolute bottom-3 left-0 right-0 flex justify-center gap-1.5">
-            {images.map((_, i) => (
-              <button
-                key={i}
-                onClick={() => setIndex(i)}
-                aria-label={`Show photo ${i + 1}`}
-                className={`h-1.5 rounded-full transition-all ${
-                  i === index ? 'bg-white w-4' : 'bg-white/50 w-1.5'
-                }`}
+    <section id="about" className="bg-[#F5F7F8] px-6 py-20 sm:px-8 lg:px-12 lg:py-28">
+      <div className="mx-auto max-w-7xl">
+        <div className="mb-20 grid items-center gap-10 lg:grid-cols-2 lg:gap-16">
+          <motion.div
+            initial={{ opacity: 0, x: -20 }}
+            whileInView={{ opacity: 1, x: 0 }}
+            viewport={{ once: true, amount: 0.4 }}
+            transition={{ duration: 0.5 }}
+            className="relative aspect-[4/3] overflow-hidden rounded-2xl"
+          >
+            <AnimatePresence mode="wait">
+              <motion.img
+                key={images[index]}
+                src={images[index]}
+                alt="SERV Pickleball Club"
+                initial={{ opacity: 0, x: 40 }}
+                animate={{ opacity: 1, x: 0 }}
+                exit={{ opacity: 0, x: -40 }}
+                transition={{ duration: 0.6, ease: 'easeInOut' }}
+                className="absolute inset-0 h-full w-full object-cover"
               />
-            ))}
-          </div>
-        </motion.div>
+            </AnimatePresence>
 
-        <motion.div
-          initial={{ opacity: 0, x: 20 }}
-          whileInView={{ opacity: 1, x: 0 }}
-          viewport={{ once: true, amount: 0.4 }}
-          transition={{ duration: 0.5, delay: 0.1 }}
-        >
-          <p className="text-court font-display font-semibold text-sm uppercase tracking-widest mb-2">
-            About SERV
-          </p>
-          <h2 className="font-display font-bold text-3xl text-ink mb-4">Built for real play.</h2>
-          <p className="text-ink/60 mb-6 leading-relaxed">
-            Three indoor courts, professionally built with high-grade silica sand and River
-            nets — covered and lit day to night, so the game never stops for weather or sunset.
-          </p>
-          <ul className="space-y-2 text-sm text-ink/70">
-            <li className="flex gap-2">
-              <span className="text-spark font-bold">•</span> 3 indoor courts, professionally built
-            </li>
-            <li className="flex gap-2">
-              <span className="text-spark font-bold">•</span> Open daily, 9:00 AM – 12:00 Midnight
-            </li>
-            <li className="flex gap-2">
-              <span className="text-spark font-bold">•</span> Walk-ins welcome 1PM–12MN, subject to availability
-            </li>
-          </ul>
-        </motion.div>
+            <div className="absolute bottom-3 left-0 right-0 flex justify-center gap-1.5">
+              {images.map((_, i) => (
+                <button
+                  key={i}
+                  onClick={() => setIndex(i)}
+                  aria-label={`Show photo ${i + 1}`}
+                  className={`h-1.5 rounded-full transition-all ${
+                    i === index ? 'bg-white w-4' : 'bg-white/50 w-1.5'
+                  }`}
+                />
+              ))}
+            </div>
+          </motion.div>
+
+          <motion.div
+            initial={{ opacity: 0, x: 20 }}
+            whileInView={{ opacity: 1, x: 0 }}
+            viewport={{ once: true, amount: 0.4 }}
+            transition={{ duration: 0.5, delay: 0.1 }}
+          >
+            <p className="mb-2 text-sm font-bold uppercase tracking-[0.25em] text-[#2F6690]">
+              About SERV
+            </p>
+            <h2 className="mb-4 font-display text-4xl font-black uppercase leading-none tracking-tight text-[#14212B] sm:text-5xl">
+              Built for
+              <span className="block text-[#E8735C]">real play.</span>
+            </h2>
+            <p className="mb-6 leading-relaxed text-[#14212B]/60">
+              Three indoor courts, professionally built with high-grade silica sand and River
+              nets — covered and lit day to night, so the game never stops for weather or sunset.
+            </p>
+            <ul className="space-y-2 text-sm text-[#14212B]/70">
+              <li className="flex gap-2">
+                <span className="font-bold text-[#E8735C]">•</span> 3 indoor courts, professionally built
+              </li>
+              <li className="flex gap-2">
+                <span className="font-bold text-[#E8735C]">•</span> Open daily, 9:00 AM – 12:00 Midnight
+              </li>
+              <li className="flex gap-2">
+                <span className="font-bold text-[#E8735C]">•</span> Walk-ins welcome 1PM–12MN, subject to availability
+              </li>
+            </ul>
+          </motion.div>
+        </div>
+
+        <div className="mb-12 flex flex-col gap-5 lg:mb-16 lg:flex-row lg:items-end lg:justify-between">
+            <div>
+              <p className="mb-3 text-sm font-bold uppercase tracking-[0.25em] text-[#2F6690]">
+                The SERV Experience
+              </p>
+
+              <h2 className="max-w-3xl font-display text-4xl font-black uppercase leading-none tracking-tight text-[#14212B] sm:text-5xl lg:text-7xl">
+                Built around
+                <span className="block text-[#E8735C]">real play.</span>
+              </h2>
+            </div>
+
+            <p className="max-w-md text-sm leading-6 text-[#14212B]/60 lg:text-base">
+              More than a place to play. SERV brings courts, competition, and
+              community together under one roof.
+            </p>
+        </div>
+
+        <div className="grid gap-4 lg:grid-cols-3">
+          {experiences.map((experience) => (
+            <motion.article
+              key={experience.number}
+              whileHover={{ y: -6 }}
+              transition={{ duration: 0.25, ease: 'easeOut' }}
+              className="group relative min-h-[420px] overflow-hidden bg-[#16324F]"
+            >
+              <img
+                src={assetUrl(experience.image)}
+                alt={experience.title}
+                className="absolute inset-0 h-full w-full object-cover opacity-65 transition-transform duration-700 ease-out group-hover:scale-105"
+              />
+
+              <div className="absolute inset-0 bg-[#16324F]/55 transition-colors duration-300 group-hover:bg-[#16324F]/45" />
+
+              <div className="relative flex min-h-[420px] flex-col justify-between p-7 sm:p-8">
+                <div className="flex items-start justify-between">
+                  <span className="font-display text-sm font-bold tracking-[0.2em] text-[#E8735C]">
+                    {experience.number}
+                  </span>
+
+                  <motion.div
+                    whileHover={{ rotate: 45 }}
+                    className="flex h-10 w-10 items-center justify-center border border-white/30 text-white"
+                  >
+                    <span className="text-lg leading-none">↗</span>
+                  </motion.div>
+                </div>
+
+                <div>
+                  <h3 className="font-display text-5xl font-black uppercase tracking-tight text-white sm:text-6xl">
+                    {experience.title}
+                  </h3>
+                  <div className="mt-4 h-px w-12 bg-[#E8735C] transition-all duration-300 group-hover:w-20" />
+                  <p className="mt-5 max-w-sm text-sm leading-6 text-white/70">
+                    {experience.description}
+                  </p>
+                </div>
+              </div>
+            </motion.article>
+          ))}
+        </div>
       </div>
     </section>
   )

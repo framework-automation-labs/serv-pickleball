@@ -2,16 +2,16 @@ import { useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { formatHour } from '../lib/api'
 import BackButton from '../components/BackButton.jsx'
-import PolicyNotice from '../components/PolicyNotice.jsx'
 
 export default function Details() {
   const { state } = useLocation()
   const navigate = useNavigate()
   const [fullName, setFullName] = useState('')
   const [phone, setPhone] = useState('')
+  const [email, setEmail] = useState('')
   const [error, setError] = useState('')
 
-  if (!state || !state.bookings?.length) {
+  if (!state) {
     return (
       <div className="min-h-screen bg-mist flex items-center justify-center px-6 text-center">
         <div>
@@ -24,16 +24,18 @@ export default function Details() {
     )
   }
 
-  const { date, bookings, totalHours, totalPrice } = state
+  const { courtName, date, startHour, endHour, durationHours, totalPrice } = state
 
   function handleSubmit(e) {
     e.preventDefault()
-    if (!fullName.trim() || !phone.trim()) {
-      setError('Please fill in both fields.')
+    const emailOk = !email.trim() || /^[^\s@<>"']+@[^\s@<>"']+\.[^\s@<>"']+$/.test(email.trim())
+    const phoneOk = /^[0-9+()\-\s]{7,20}$/.test(phone.trim())
+    if (!fullName.trim() || fullName.trim().length > 100 || !phoneOk || !emailOk) {
+      setError('Please enter your name, a valid phone number, and (optionally) a valid email address.')
       return
     }
     navigate('/checkout', {
-      state: { ...state, fullName: fullName.trim(), phone: phone.trim() },
+      state: { ...state, fullName: fullName.trim(), phone: phone.trim(), email: email.trim() },
     })
   }
 
@@ -44,22 +46,12 @@ export default function Details() {
         <h1 className="font-display font-bold text-2xl text-ink mb-1">Your Details</h1>
         <p className="text-ink/50 text-sm mb-6">We'll use this to confirm your booking.</p>
 
-        <div className="bg-white rounded-2xl shadow-sm border border-line p-4 mb-4 text-sm space-y-1.5">
-          <p className="text-ink/50 mb-1">{date}</p>
-          {bookings.map((b, i) => (
-            <p key={i} className="font-semibold text-ink">
-              {b.courtName} · {formatHour(b.startHour)} – {formatHour(b.endHour)} ({b.hours}h)
-            </p>
-          ))}
-          <div className="border-t border-line pt-2 mt-2 flex justify-between">
-            <span className="text-ink/50">
-              {totalHours} {totalHours === 1 ? 'hour' : 'hours'} total
-            </span>
-            <span className="font-display font-bold text-court-dark">₱{totalPrice}</span>
-          </div>
+        <div className="bg-white rounded-2xl shadow-sm border border-line p-4 mb-6 text-sm">
+          <p className="font-semibold text-ink">{courtName}</p>
+          <p className="text-ink/60">
+            {date} · {formatHour(startHour)} – {formatHour(endHour)} ({durationHours}h) · ₱{totalPrice}
+          </p>
         </div>
-
-        <PolicyNotice className="mb-6" />
 
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
@@ -71,6 +63,7 @@ export default function Details() {
               value={fullName}
               onChange={(e) => setFullName(e.target.value)}
               placeholder="Juan Dela Cruz"
+              maxLength={100}
               className="w-full border border-line rounded-lg px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-court"
             />
           </div>
@@ -83,6 +76,21 @@ export default function Details() {
               value={phone}
               onChange={(e) => setPhone(e.target.value)}
               placeholder="09XX XXX XXXX"
+              maxLength={20}
+              className="w-full border border-line rounded-lg px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-court"
+            />
+          </div>
+
+          <div>
+            <label className="block text-xs font-semibold text-ink/60 uppercase tracking-wide mb-1">
+              Email <span className="normal-case font-normal text-ink/40">(optional — to get your receipt by email)</span>
+            </label>
+            <input
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              placeholder="juan@email.com"
+              maxLength={254}
               className="w-full border border-line rounded-lg px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-court"
             />
           </div>

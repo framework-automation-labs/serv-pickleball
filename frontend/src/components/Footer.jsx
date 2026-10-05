@@ -1,9 +1,13 @@
+import { Link } from 'react-router-dom'
+
+const logoUrl = `${import.meta.env.BASE_URL}serv-logo.png`
+
 export default function Footer() {
   return (
     <footer className="bg-court-dark text-court-light px-6 py-12">
-      <div className="max-w-5xl mx-auto grid gap-10 sm:grid-cols-3 mb-10">
+      <div className="max-w-5xl mx-auto grid gap-10 sm:grid-cols-4 mb-10">
         <div>
-          <img src="/serv-logo.png" alt="SERV Pickleball Club" className="h-20 mb-0" />
+            <img src={logoUrl} alt="SERV Pickleball Club" className="h-20 mb-0" />
           <p className="text-sm">Pickleball Club</p>
         </div>
 
@@ -12,6 +16,15 @@ export default function Footer() {
           <p>K. Kangleon St., Mambajao</p>
           <p>Maasin City, Southern Leyte</p>
           <p className="pt-2">9:00 AM – 12:00 Midnight, Daily</p>
+        </div>
+
+        <div className="text-sm">
+          <p className="text-white font-semibold mb-3">Quick Links</p>
+          <div className="space-y-1.5">
+            <Link to="/book" className="block hover:text-white transition-colors">
+              Book a Court
+            </Link>
+          </div>
         </div>
 
         <div>
