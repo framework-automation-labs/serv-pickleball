@@ -54,7 +54,7 @@ export function isHourBooked(courtId, hour, availability) {
   })
 }
 
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000'
+const API_URL = import.meta.env.VITE_API_URL || 'https://serv-pickleball-backend.onrender.com'
 
 // Submits a booking (one or more court/time blocks) together with the
 // GCash receipt screenshot. Returns { bookingGroupId, referenceCode }
