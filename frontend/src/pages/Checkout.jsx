@@ -113,7 +113,7 @@ export default function Checkout() {
         <PolicyNotice className="mb-6" />
 
         <div className="bg-card rounded-2xl shadow-sm border border-line p-5 mb-6 text-center">
-          <p className="text-xs font-semibold text-ink/50 uppercase tracking-wide mb-2">Send Payment To GCASH</p>
+          <p className="text-xs font-semibold text-ink/50 uppercase tracking-wide mb-2">GCASH PAYMENT</p>
           {GCASH_CONFIG.gcashQrImage && (
             <img src={GCASH_CONFIG.gcashQrImage} alt="GCash QR code" className="w-40 h-40 mx-auto mb-3 rounded-lg border border-line" />
           )}
