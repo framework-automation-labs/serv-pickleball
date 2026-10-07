@@ -2,7 +2,7 @@ import { Link } from 'react-router-dom'
 
 const logoUrl = `${import.meta.env.BASE_URL}serv-logo.png`
 const IG_URL = 'https://www.instagram.com/serv_club?utm_source=ig_web_button_share_sheet&stkn=ZDNlZDc0MzIxNw=='
-const FB_URL = 'https://www.facebook.com/share/1CG8LGk4y1/'
+const FB_URL = 'https://www.facebook.com/share/1Birykpkaa/?mibextid=wwXIfr'
 const ADDRESS = 'K. Kangleon St., Mambajao, Maasin City, Southern Leyte, Philippines'
 const MAPS_URL = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(ADDRESS)}`
 
