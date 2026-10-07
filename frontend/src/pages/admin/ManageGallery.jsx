@@ -183,7 +183,7 @@ export default function ManageGallery() {
     <AdminLayout title="Gallery">
       <form
         onSubmit={handleUpload}
-        className="bg-white rounded-2xl border border-line px-6 py-6 mb-6 space-y-4"
+        className="bg-white rounded-2xl border border-line px-4 py-5 sm:px-6 sm:py-6 mb-6 space-y-4"
       >
         <div className="flex flex-wrap items-end gap-4">
           <div>

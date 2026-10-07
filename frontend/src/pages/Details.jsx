@@ -1,7 +1,14 @@
 import { useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
+import { motion } from 'motion/react'
 import { formatHour } from '../lib/api'
 import BackButton from '../components/BackButton.jsx'
+import StepProgress from '../components/StepProgress.jsx'
+import PolicyNotice from '../components/PolicyNotice.jsx'
+
+const inputCls =
+  'w-full min-h-[44px] rounded-xl border border-line bg-card px-3.5 py-2.5 text-base transition-shadow focus:outline-none focus:ring-2 focus:ring-court'
+const labelCls = 'mb-1.5 block text-sm font-medium text-ink/70'
 
 export default function Details() {
   const { state } = useLocation()
@@ -9,14 +16,14 @@ export default function Details() {
   const [fullName, setFullName] = useState('')
   const [phone, setPhone] = useState('')
   const [email, setEmail] = useState('')
-  const [error, setError] = useState('')
+  const [errors, setErrors] = useState({})
 
-  if (!state) {
+  if (!state || !Array.isArray(state.bookings)) {
     return (
-      <div className="min-h-screen bg-mist flex items-center justify-center px-6 text-center">
+      <div className="flex min-h-screen items-center justify-center bg-mist px-6 text-center">
         <div>
-          <p className="text-ink/60 mb-4">No booking selected.</p>
-          <button onClick={() => navigate('/book')} className="text-court font-semibold underline">
+          <p className="mb-4 text-ink/60">No booking selected.</p>
+          <button onClick={() => navigate('/book')} className="font-semibold text-link underline">
             Go back to booking
           </button>
         </div>
@@ -24,87 +31,88 @@ export default function Details() {
     )
   }
 
-  const { courtName, date, startHour, endHour, durationHours, totalPrice } = state
+  const { bookings, totalHours, totalPrice } = state
 
-  function handleSubmit(e) {
-    e.preventDefault()
-    const emailOk = !email.trim() || /^[^\s@<>"']+@[^\s@<>"']+\.[^\s@<>"']+$/.test(email.trim())
-    const phoneOk = /^[0-9+()\-\s]{7,20}$/.test(phone.trim())
-    if (!fullName.trim() || fullName.trim().length > 100 || !phoneOk || !emailOk) {
-      setError('Please enter your name, a valid phone number, and (optionally) a valid email address.')
-      return
-    }
+  function validate() {
+    const e = {}
+    if (!fullName.trim()) e.fullName = 'Enter your full name.'
+    else if (fullName.trim().length > 100) e.fullName = 'Name is too long (max 100 characters).'
+    const digits = phone.replace(/\D/g, '')
+    if (!/^(09\d{9}|639\d{9})$/.test(digits)) e.phone = 'Enter a valid mobile number, like 0917 123 4567.'
+    if (email.trim() && !/^[^\s@<>"']+@[^\s@<>"']+\.[^\s@<>"']+$/.test(email.trim())) e.email = 'Enter a valid email or leave it blank.'
+    return e
+  }
+
+  function handleSubmit(ev) {
+    ev.preventDefault()
+    const e = validate()
+    setErrors(e)
+    if (Object.keys(e).length) return
     navigate('/checkout', {
       state: { ...state, fullName: fullName.trim(), phone: phone.trim(), email: email.trim() },
     })
   }
 
-  return (
-    <div className="min-h-screen bg-mist px-6 py-10">
-      <div className="max-w-md mx-auto">
-        <BackButton className="mb-4" />
-        <h1 className="font-display font-bold text-2xl text-ink mb-1">Your Details</h1>
-        <p className="text-ink/50 text-sm mb-6">We'll use this to confirm your booking.</p>
+  const err = (k) => errors[k] && <p className="mt-1 text-sm text-red-600">{errors[k]}</p>
 
-        <div className="bg-white rounded-2xl shadow-sm border border-line p-4 mb-6 text-sm">
-          <p className="font-semibold text-ink">{courtName}</p>
-          <p className="text-ink/60">
-            {date} · {formatHour(startHour)} – {formatHour(endHour)} ({durationHours}h) · ₱{totalPrice}
-          </p>
+  return (
+    <div className="min-h-screen bg-mist px-5 py-8 sm:py-10">
+      <motion.div
+        initial={{ opacity: 0, y: 12 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.4, ease: [0.22, 1, 0.36, 1] }}
+        className="mx-auto max-w-md"
+      >
+        <BackButton className="mb-4" />
+        <div className="mb-6">
+          <StepProgress current={2} />
+        </div>
+        <h1 className="mb-1 font-display text-2xl font-bold text-ink">Your details</h1>
+        <p className="mb-6 text-sm text-ink/50">We'll use these to confirm your booking.</p>
+
+        <div className="mb-6 space-y-2 rounded-2xl border border-line bg-card p-4 text-sm shadow-sm">
+          {bookings.map((b, i) => (
+            <div key={i} className="flex justify-between gap-3">
+              <span className="font-semibold text-ink">{b.courtName}</span>
+              <span className="text-right text-ink/60">
+                {b.date} · {formatHour(b.startHour)} – {formatHour(b.endHour)}
+              </span>
+            </div>
+          ))}
+          <div className="flex items-center justify-between border-t border-line pt-3">
+            <span className="text-ink/50">Total ({totalHours}h)</span>
+            <span className="font-display text-lg font-bold text-heading">₱{totalPrice}</span>
+          </div>
         </div>
 
-        <form onSubmit={handleSubmit} className="space-y-4">
+        <PolicyNotice className="mb-6" />
+
+        <form onSubmit={handleSubmit} className="space-y-4" noValidate>
           <div>
-            <label className="block text-xs font-semibold text-ink/60 uppercase tracking-wide mb-1">
-              Full Name
-            </label>
-            <input
-              type="text"
-              value={fullName}
-              onChange={(e) => setFullName(e.target.value)}
-              placeholder="Juan Dela Cruz"
-              maxLength={100}
-              className="w-full border border-line rounded-lg px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-court"
-            />
+            <label htmlFor="fullName" className={labelCls}>Full name</label>
+            <input id="fullName" type="text" autoComplete="name" value={fullName} onChange={(e) => setFullName(e.target.value)} placeholder="Juan Dela Cruz" className={inputCls} />
+            {err('fullName')}
           </div>
           <div>
-            <label className="block text-xs font-semibold text-ink/60 uppercase tracking-wide mb-1">
-              Phone Number
-            </label>
-            <input
-              type="tel"
-              value={phone}
-              onChange={(e) => setPhone(e.target.value)}
-              placeholder="09XX XXX XXXX"
-              maxLength={20}
-              className="w-full border border-line rounded-lg px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-court"
-            />
+            <label htmlFor="phone" className={labelCls}>Mobile number</label>
+            <input id="phone" type="tel" inputMode="tel" autoComplete="tel" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="0917 123 4567" className={inputCls} />
+            {err('phone')}
           </div>
-
           <div>
-            <label className="block text-xs font-semibold text-ink/60 uppercase tracking-wide mb-1">
-              Email <span className="normal-case font-normal text-ink/40">(optional — to get your receipt by email)</span>
+            <label htmlFor="email" className={labelCls}>
+              Email <span className="font-normal text-ink/40">(optional, to get your receipt)</span>
             </label>
-            <input
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              placeholder="juan@email.com"
-              maxLength={254}
-              className="w-full border border-line rounded-lg px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-court"
-            />
+            <input id="email" type="email" autoComplete="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="juan@email.com" className={inputCls} />
+            {err('email')}
           </div>
-
-          {error && <p className="text-red-600 text-sm">{error}</p>}
-
           <button
             type="submit"
-            className="w-full bg-spark text-white font-display font-semibold py-3.5 rounded-full hover:brightness-110 active:scale-[0.98] transition-all"
+            className="min-h-[48px] w-full rounded-full bg-spark font-display font-semibold text-white transition-all hover:brightness-110 active:scale-[0.98]"
           >
-            Continue to Payment
+            Continue to payment
           </button>
         </form>
-      </div>
+      </motion.div>
     </div>
   )
 }

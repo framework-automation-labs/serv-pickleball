@@ -3,6 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link rel="icon" type="image/png" href="/favicon.png" />
     <meta name="referrer" content="strict-origin-when-cross-origin" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -10,10 +11,20 @@
       href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap"
       rel="stylesheet"
     />
+    <meta name="color-scheme" content="light dark" />
+    <meta name="theme-color" content="#FDF4EE" media="(prefers-color-scheme: light)" />
+    <meta name="theme-color" content="#0F2438" media="(prefers-color-scheme: dark)" />
+    <script>
+      // Match the device's light/dark setting before first paint so there is no flash.
+      (function () {
+        try {
+          var dark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+          if (dark && location.pathname.indexOf('/admin') === -1) document.documentElement.classList.add('dark');
+        } catch (e) {}
+      })();
+    </script>
     <title>SERV Pickleball Club — Book a Court</title>
-
   </head>
-  
   <body class="bg-mist font-sans text-ink">
     <div id="root"></div>
     <script type="module" src="/src/main.jsx"></script>

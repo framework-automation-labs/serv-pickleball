@@ -8,9 +8,9 @@ import Footer from '../components/Footer.jsx'
 
 const assetUrl = (name) => `${import.meta.env.BASE_URL}${name}`
 const stats = [
-  { value: 3, suffix: '', label: 'Courts' },
+  { value: 4, suffix: '', label: 'Courts' },
   { value: 9, suffix: 'AM–12MN', label: 'Open Daily', textOnly: true },
-  { value: 300, suffix: '', label: 'Per Hour', prefix: '₱' },
+  { value: 300, suffix: '', label: 'From / Hour', prefix: '₱' },
 ]
 
 function scrollToSection(id) {
@@ -60,7 +60,7 @@ export default function Home() {
   return (
     <main className="bg-mist text-ink overflow-hidden">
       {/* HERO */}
-      <section className="relative min-h-[88vh] lg:min-h-[92vh] overflow-hidden flex items-end">
+      <section id="top" className="relative min-h-[88vh] lg:min-h-[92vh] overflow-hidden flex items-end">
         <div
           className="absolute inset-0 bg-cover bg-center"
           style={{
@@ -74,9 +74,31 @@ export default function Home() {
 
         {/* Decorative court lines */}
         <div className="absolute inset-0 pointer-events-none opacity-20">
-          <div className="absolute left-1/2 top-0 h-full w-px bg-white/40" />
-          <div className="absolute left-0 right-0 top-1/2 h-px bg-white/30" />
+          <motion.div
+            className="absolute left-1/2 top-0 h-full w-px origin-top bg-white/40"
+            initial={{ scaleY: 0 }}
+            animate={{ scaleY: 1 }}
+            transition={{ duration: 1.2, delay: 0.3, ease: [0.22, 1, 0.36, 1] }}
+          />
+          <motion.div
+            className="absolute left-0 right-0 top-1/2 h-px origin-left bg-white/30"
+            initial={{ scaleX: 0 }}
+            animate={{ scaleX: 1 }}
+            transition={{ duration: 1.4, delay: 0.5, ease: [0.22, 1, 0.36, 1] }}
+          />
         </div>
+
+        {/* Ambient ball: a slow arc across the hero (decorative) */}
+        <motion.span
+          aria-hidden="true"
+          className="pointer-events-none absolute left-0 top-[34%] block h-3 w-3 rounded-full bg-[#E8735C]/70 shadow-[0_0_18px_rgba(232,115,92,0.6)]"
+          initial={{ x: '-6vw', y: 0 }}
+          animate={{ x: ['-6vw', '106vw'], y: [0, -110, 0] }}
+          transition={{
+            x: { duration: 11, ease: 'linear', repeat: Infinity, repeatDelay: 4 },
+            y: { duration: 11, times: [0, 0.5, 1], ease: ['easeOut', 'easeIn'], repeat: Infinity, repeatDelay: 4 },
+          }}
+        />
 
         <div className="relative z-10 w-full max-w-7xl mx-auto px-6 sm:px-8 lg:px-12 pb-10 pt-24 lg:pb-16 lg:pt-28">
           <div className="max-w-5xl">
@@ -113,10 +135,6 @@ export default function Home() {
                 alt="SERV Pickleball Club"
                 className="w-48 sm:w-56 lg:w-64 transition-opacity duration-300 group-hover:opacity-90"
               />
-
-              <span className="mt-2 block text-[11px] font-bold uppercase tracking-[0.2em] text-white/50 transition-colors duration-300 group-hover:text-[#E8735C]">
-                Discover SERV ↓
-              </span>
             </motion.button>
 
             {/* PRIMARY ACTIONS */}
@@ -132,6 +150,13 @@ export default function Home() {
               >
                 Book a Court
               </Link>
+              <button
+                type="button"
+                onClick={() => scrollToSection('about')}
+                className="inline-flex items-center justify-center border border-white/60 bg-white/5 px-6 py-3 text-xs font-bold uppercase tracking-wide text-white backdrop-blur-sm transition-transform duration-200 hover:-translate-y-0.5 hover:bg-white/15 active:translate-y-0"
+              >
+                About Us
+              </button>
             </motion.div>
 
             {/* STATS */}
@@ -142,9 +167,6 @@ export default function Home() {
                     key={stat.label}
                     className="relative px-2 py-3 sm:px-4 sm:py-4"
                   >
-                    <span className="absolute left-2 top-2 text-[8px] font-bold tracking-[0.2em] text-white/30 sm:left-4 sm:text-[10px] sm:tracking-[0.3em]">
-                      0{index + 1}
-                    </span>
 
                     <div className="pt-3 sm:pt-4">
                       {stat.textOnly ? (
@@ -170,25 +192,21 @@ export default function Home() {
               </div>
             </section>
 
-            {/* HERO TITLE */}
-            <motion.h1
-              initial={{ opacity: 0, y: 30 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.7, delay: 0.22 }}
-              className="font-display font-black uppercase leading-[0.82] tracking-tight text-white"
-            >
-              <span className="block text-[clamp(3.25rem,8vw,7rem)]">
-                Play.
-              </span>
-
-              <span className="block text-[clamp(3.25rem,8vw,7rem)]">
-                Compete.
-              </span>
-
-              <span className="block text-[clamp(3.25rem,8vw,7rem)] text-[#E8735C]">
-                Connect.
-              </span>
-            </motion.h1>
+            {/* HERO TITLE: masked line-by-line reveal */}
+            <h1 className="font-display font-black uppercase leading-[0.82] tracking-tight text-white">
+              {['Play.', 'Compete.', 'Connect.'].map((word, i) => (
+                <span key={word} className="block overflow-hidden pt-[0.06em] -mt-[0.06em] pb-[0.04em] -mb-[0.04em]">
+                  <motion.span
+                    className={`block text-[clamp(3.25rem,8vw,7rem)] ${i === 2 ? 'text-[#E8735C]' : ''}`}
+                    initial={{ y: '105%' }}
+                    animate={{ y: 0 }}
+                    transition={{ duration: 0.8, delay: 0.22 + i * 0.12, ease: [0.22, 1, 0.36, 1] }}
+                  >
+                    {word}
+                  </motion.span>
+                </span>
+              ))}
+            </h1>
 
             {/* DESCRIPTION + BUTTONS */}
             <motion.div

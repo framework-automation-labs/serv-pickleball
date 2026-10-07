@@ -18,10 +18,16 @@ export default function PolicyNotice({ className = '' }) {
           strokeLinejoin="round"
         />
       </svg>
-      <p>
-        <span className="font-semibold">Strict No-Cancellation Policy —</span> bookings cannot be
-        refunded or cancelled once confirmed.
-      </p>
+      <div className="space-y-1.5">
+        <p>
+          <span className="font-semibold">Strict No-Cancellation Policy —</span> bookings cannot be
+          refunded or cancelled once confirmed.
+        </p>
+        <p>
+          <span className="font-semibold">Reschedule Policy —</span> a booking can only be rescheduled
+          up to 6 hours before your reservation.
+        </p>
+      </div>
     </div>
   )
 }

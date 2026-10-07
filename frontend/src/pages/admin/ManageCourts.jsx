@@ -138,7 +138,7 @@ export default function ManageCourts() {
         ) : courts.length === 0 ? (
           <p className="px-6 py-10 text-center text-ink/50 text-sm">No courts found.</p>
         ) : (
-          <table className="w-full text-sm">
+          <div className="overflow-x-auto"><table className="w-full min-w-[420px] text-sm">
             <thead>
               <tr className="border-b border-line text-left text-ink/50">
                 <th className="px-6 py-3 font-medium">Court</th>
@@ -169,7 +169,7 @@ export default function ManageCourts() {
                 </tr>
               ))}
             </tbody>
-          </table>
+          </table></div>
         )}
       </div>
 
@@ -261,7 +261,7 @@ export default function ManageCourts() {
         ) : blockedSlots.length === 0 ? (
           <p className="px-6 py-8 text-center text-ink/50 text-sm">No upcoming blocked time slots.</p>
         ) : (
-          <table className="w-full text-sm">
+          <div className="overflow-x-auto"><table className="w-full min-w-[420px] text-sm">
             <thead>
               <tr className="border-b border-line text-left text-ink/50">
                 <th className="px-6 py-3 font-medium">Court</th>
@@ -290,7 +290,7 @@ export default function ManageCourts() {
                 </tr>
               ))}
             </tbody>
-          </table>
+          </table></div>
         )}
       </div>
     </AdminLayout>

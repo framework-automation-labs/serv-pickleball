@@ -45,6 +45,25 @@ export function formatHour(hour) {
   return `${display}:00 ${period}`
 }
 
+// Current date + hour in the club's timezone (Philippines), matching what the backend checks.
+export function manilaNow() {
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Manila',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    hourCycle: 'h23',
+  }).formatToParts(new Date())
+  const get = (t) => parts.find((p) => p.type === t).value
+  return { today: `${get('year')}-${get('month')}-${get('day')}`, hour: Number(get('hour')) }
+}
+
+// A slot is closed once its start time has been reached (past dates are closed entirely).
+export function isHourPast(date, hour, now = manilaNow()) {
+  return date < now.today || (date === now.today && hour <= now.hour)
+}
+
 export function isHourBooked(courtId, hour, availability) {
   return availability.some((b) => {
     if (b.court_id !== courtId) return false
@@ -97,6 +116,12 @@ async function authedPatch(path, body) {
   const data = await res.json().catch(() => ({}))
   if (!res.ok) throw new Error(data.error || 'Something went wrong.')
   return data
+}
+
+// Moves one booked block to another court / date / start hour (admin only; the server
+// enforces the 6-hour rule and refuses overlaps).
+export function rescheduleBooking(bookingId, { courtId, date, startHour }) {
+  return authedPatch(`/api/bookings/${bookingId}/reschedule`, { courtId, date, startHour })
 }
 
 export function reviewBookingGroup(groupId, action, reason) {

@@ -1,5 +1,13 @@
 import PDFDocument from 'pdfkit'
 import QRCode from 'qrcode'
+import path from 'node:path'
+import { fileURLToPath } from 'node:url'
+
+// PDFKit's built-in Helvetica has no peso sign (U+20B1), so it printed as a
+// broken glyph. DejaVu Sans does include it, so the money line uses these.
+const FONT_DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), '../../assets/fonts')
+const FONT_PESO = path.join(FONT_DIR, 'DejaVuSans.ttf')
+const FONT_PESO_BOLD = path.join(FONT_DIR, 'DejaVuSans-Bold.ttf')
 
 const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:5173'
 
@@ -43,6 +51,8 @@ export function buildReceiptPdf(opts) {
       const qrImage = Buffer.from(qrDataUrl.split(',')[1], 'base64')
 
       const doc = new PDFDocument({ size: 'A5', margin: 0 })
+      doc.registerFont('PesoSans', FONT_PESO)
+      doc.registerFont('PesoSans-Bold', FONT_PESO_BOLD)
       const chunks = []
       doc.on('data', (chunk) => chunks.push(chunk))
       doc.on('end', () => resolve(Buffer.concat(chunks)))
@@ -111,7 +121,7 @@ export function buildReceiptPdf(opts) {
         .strokeColor(COLORS.line)
         .stroke()
 
-      doc.font('Helvetica-Bold').fontSize(12).fillColor(COLORS.spark).text(opts.totalLabel, labelX, cy, {
+      doc.font('PesoSans-Bold').fontSize(11).fillColor(COLORS.spark).text(opts.totalLabel, labelX, cy, {
         width: contentWidth - 32,
       })
 

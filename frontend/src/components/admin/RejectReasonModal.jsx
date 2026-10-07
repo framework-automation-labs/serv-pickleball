@@ -4,8 +4,8 @@ export default function RejectReasonModal({ onCancel, onConfirm, submitting }) {
   const [reason, setReason] = useState('')
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center px-6 bg-ink/60" onClick={onCancel}>
-      <div className="bg-white rounded-2xl shadow-xl p-5 max-w-sm w-full" onClick={(e) => e.stopPropagation()}>
+    <div className="fixed inset-0 z-50 flex overflow-y-auto bg-ink/60 px-4 py-6 sm:px-6" onClick={onCancel}>
+      <div className="m-auto bg-white rounded-2xl shadow-xl p-5 max-w-sm w-full" onClick={(e) => e.stopPropagation()}>
         <h3 className="font-display font-semibold text-ink mb-2">Reject this receipt?</h3>
         <p className="text-ink/50 text-sm mb-3">
           Let the customer know why, so they can fix it and resubmit if needed.

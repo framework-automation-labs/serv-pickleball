@@ -1,126 +1,198 @@
-import { useEffect, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { useCallback, useEffect, useMemo, useState } from 'react'
+import { motion } from 'motion/react'
 import AdminLayout from '../../components/admin/AdminLayout.jsx'
 import StatsCard from '../../components/admin/StatsCard.jsx'
+import NeedsAttention from '../../components/admin/NeedsAttention.jsx'
+import BookingTrend from '../../components/admin/BookingTrend.jsx'
+import AnimatedNumber from '../../components/AnimatedNumber.jsx'
 import { supabase } from '../../lib/supabaseClient.js'
+import { generateHourSlots } from '../../lib/api.js'
+import {
+  addDays,
+  endHour,
+  groupByBookingGroup,
+  hoursSince,
+  localDateString,
+  startHour,
+} from '../../components/admin/adminUtils.js'
 
-function todayDateString() {
-  const now = new Date()
-  return now.toISOString().slice(0, 10)
-}
+const REFRESH_MS = 60000
 
-function displayDate() {
-  return new Intl.DateTimeFormat('en-PH', {
-    weekday: 'long',
-    month: 'long',
-    day: 'numeric',
-    year: 'numeric',
-  }).format(new Date())
+const hoursOf = (b) => Math.max(0, endHour(b.end_time) - startHour(b.start_time))
+
+function UtilizationCard({ pct, detail, loading }) {
+  return (
+    <div className="relative overflow-hidden rounded-2xl border border-line bg-white px-4 py-4 shadow-sm sm:px-5 sm:py-5">
+      <div className="absolute inset-y-0 left-0 w-1 bg-ink" />
+      <div className="flex items-center justify-between gap-3 pl-2">
+        <div>
+          <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-ink/50">Utilization today</p>
+          <p className="font-display text-2xl text-ink sm:text-3xl">
+            {loading ? (
+              '—'
+            ) : (
+              <>
+                <AnimatedNumber value={pct} />%
+              </>
+            )}
+          </p>
+          <p className="mt-1 text-xs text-ink/45">{detail}</p>
+        </div>
+        <svg viewBox="0 0 48 48" className="h-12 w-12 shrink-0 -rotate-90" aria-hidden="true">
+          <circle cx="24" cy="24" r="20" fill="none" strokeWidth="5" className="stroke-line" />
+          <motion.circle
+            cx="24"
+            cy="24"
+            r="20"
+            fill="none"
+            strokeWidth="5"
+            strokeLinecap={pct > 0 ? 'round' : 'butt'}
+            className="stroke-spark"
+            initial={{ pathLength: 0 }}
+            animate={{ pathLength: loading ? 0 : pct / 100 }}
+            transition={{ duration: 0.9, ease: [0.22, 1, 0.36, 1] }}
+          />
+        </svg>
+      </div>
+    </div>
+  )
 }
 
 export default function AdminDashboard() {
-  const [stats, setStats] = useState(null)
+  const [data, setData] = useState(null)
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState('')
+
+  // Read-only queries (the same tables and joins the admin pages already read).
+  const load = useCallback(async () => {
+    const today = localDateString()
+    const weekStart = localDateString(addDays(new Date(), -6))
+
+    const [courtsRes, todayRes, blockedRes, weekRes, pendingBookingsRes] = await Promise.all([
+      supabase.from('courts').select('id, name').eq('status', 'active').order('id'),
+      supabase.from('bookings').select('*, courts(name)').eq('booking_date', today).neq('status', 'cancelled').order('start_time'),
+      supabase.from('blocked_slots').select('court_id, start_time, end_time').eq('blocked_date', today),
+      supabase
+        .from('bookings')
+        .select('booking_date, start_time, end_time')
+        .gte('booking_date', weekStart)
+        .lte('booking_date', today)
+        .neq('status', 'cancelled'),
+      supabase.from('bookings').select('*, courts(name)').eq('status', 'pending').order('created_at').limit(200),
+    ])
+
+    const failed = [courtsRes, todayRes, blockedRes, weekRes, pendingBookingsRes].some((r) => r.error)
+    setError(failed ? 'Some dashboard data could not be loaded. Showing what is available.' : '')
+    setData({
+      today,
+      courts: courtsRes.data || [],
+      todayBookings: todayRes.data || [],
+      blocked: blockedRes.data || [],
+      week: weekRes.data || [],
+      pendingBookings: pendingBookingsRes.data || [],
+    })
+    setLoading(false)
+  }, [])
 
   useEffect(() => {
-    let active = true
-
-    async function loadStats() {
-      const today = todayDateString()
-
-      const [activeCourts, todaysBookings, pendingBookings, totalBookings] = await Promise.all([
-        supabase.from('courts').select('*', { count: 'exact', head: true }).eq('status', 'active'),
-        supabase
-          .from('bookings')
-          .select('*', { count: 'exact', head: true })
-          .eq('booking_date', today)
-          .neq('status', 'cancelled'),
-        supabase.from('bookings').select('*', { count: 'exact', head: true }).eq('status', 'pending'),
-        supabase.from('bookings').select('*', { count: 'exact', head: true }).neq('status', 'cancelled'),
-      ])
-
-      if (!active) return
-      setStats({
-        activeCourts: activeCourts.count ?? 0,
-        todaysBookings: todaysBookings.count ?? 0,
-        pendingBookings: pendingBookings.count ?? 0,
-        totalBookings: totalBookings.count ?? 0,
-      })
-      setLoading(false)
+    load()
+    const timer = setInterval(load, REFRESH_MS)
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') load()
     }
-
-    loadStats()
+    document.addEventListener('visibilitychange', onVisible)
     return () => {
-      active = false
+      clearInterval(timer)
+      document.removeEventListener('visibilitychange', onVisible)
     }
-  }, [])
+  }, [load])
+
+  const stats = useMemo(() => {
+    if (!data) return null
+    const { courts, todayBookings, blocked, week, pendingBookings } = data
+    const activeIds = new Set(courts.map((c) => c.id))
+    const openHours = generateHourSlots().length
+
+    const bookedHours = todayBookings.filter((b) => activeIds.has(b.court_id)).reduce((s, b) => s + hoursOf(b), 0)
+    const blockedHours = blocked.filter((b) => activeIds.has(b.court_id)).reduce((s, b) => s + hoursOf(b), 0)
+    const availableHours = Math.max(0, courts.length * openHours - blockedHours)
+    const utilization = availableHours ? Math.min(100, Math.round((bookedHours / availableHours) * 100)) : 0
+
+    const pendingCount = groupByBookingGroup(pendingBookings).length
+    const oldestWait = pendingBookings.reduce((max, x) => Math.max(max, hoursSince(x.created_at)), 0)
+
+    const days = Array.from({ length: 7 }, (_, i) => {
+      const d = addDays(new Date(), i - 6)
+      const key = localDateString(d)
+      return {
+        key,
+        hours: week.filter((b) => b.booking_date === key).reduce((s, b) => s + hoursOf(b), 0),
+        label: d.toLocaleDateString('en-PH', { weekday: 'short' }),
+        isToday: i === 6,
+      }
+    })
+
+    return {
+      todayGroups: new Set(todayBookings.map((b) => b.booking_group_id)).size,
+      bookedHours,
+      availableHours,
+      utilization,
+      pendingCount,
+      oldestWait,
+      activeCourts: courts.length,
+      openHours,
+      days,
+    }
+  }, [data])
 
   return (
     <AdminLayout title="Dashboard">
-      <section className="relative mb-6 overflow-hidden rounded-2xl bg-court-dark px-5 py-6 text-white shadow-sm sm:px-7 sm:py-7">
-        <div className="relative z-10 max-w-2xl">
-          <p className="mb-2 text-xs font-semibold uppercase tracking-[0.18em] text-court-light">Operations overview</p>
-          <h2 className="font-display text-2xl font-semibold sm:text-3xl">Keep the courts moving.</h2>
-          <p className="mt-2 max-w-xl text-sm leading-relaxed text-court-light">
-            A quick look at bookings and court activity for today.
-          </p>
-          <p className="mt-5 text-xs font-medium text-white/60">{displayDate()}</p>
-        </div>
-        <div className="absolute -right-12 -top-16 h-48 w-48 rounded-full border-[22px] border-spark/25 sm:h-64 sm:w-64" />
-        <div className="absolute -bottom-24 right-20 h-40 w-40 rounded-full border-[14px] border-court-light/15" />
-      </section>
+      <NeedsAttention
+        bookings={data?.pendingBookings || []}
+        loading={loading}
+        onChanged={load}
+      />
+
+      {error && <p className="mb-4 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-600">{error}</p>}
 
       <div className="mb-6 grid grid-cols-2 gap-3 sm:grid-cols-4 sm:gap-4">
-        <StatsCard label="Today's bookings" value={stats?.todaysBookings} loading={loading} detail="Active today" accent="spark" />
-        <StatsCard label="Pending" value={stats?.pendingBookings} loading={loading} detail="Needs attention" accent="court" />
-        <StatsCard label="Active courts" value={stats?.activeCourts} loading={loading} detail="Available inventory" accent="green" />
-        <StatsCard label="Total bookings" value={stats?.totalBookings} loading={loading} detail="All time" accent="ink" />
+        <StatsCard
+          label="Today's bookings"
+          value={stats?.todayGroups}
+          loading={loading}
+          detail={stats ? `${stats.bookedHours} court-hours booked` : ''}
+          accent="spark"
+        />
+        <StatsCard
+          label="Pending review"
+          value={stats?.pendingCount}
+          loading={loading}
+          detail={
+            stats
+              ? stats.pendingCount === 0
+                ? 'All caught up'
+                : stats.oldestWait >= 1
+                ? `Oldest waiting ${stats.oldestWait}h`
+                : 'Just arrived'
+              : ''
+          }
+          accent="court"
+        />
+        <UtilizationCard
+          pct={stats?.utilization ?? 0}
+          loading={loading}
+          detail={stats ? `${stats.bookedHours} of ${stats.availableHours} hours` : ''}
+        />
+        <StatsCard
+          label="Active courts"
+          value={stats?.activeCourts}
+          loading={loading}
+          detail={stats ? `${stats.openHours} open hours a day` : ''}
+          accent="green"
+        />
       </div>
 
-      <div className="grid gap-4 lg:grid-cols-[1.35fr_0.65fr]">
-        <section className="rounded-2xl border border-line bg-white p-5 shadow-sm sm:p-6">
-          <div className="mb-5 flex items-start justify-between gap-4">
-            <div>
-              <p className="text-xs font-semibold uppercase tracking-[0.16em] text-court">Today at a glance</p>
-              <h3 className="mt-1 font-display text-xl font-semibold text-ink">Booking activity</h3>
-            </div>
-            <span className="rounded-full bg-mist px-3 py-1 text-xs font-medium text-ink/60">Live totals</span>
-          </div>
-          <div className="space-y-4">
-            <div>
-              <div className="mb-2 flex justify-between gap-4 text-sm">
-                <span className="text-ink/70">Today's confirmed and pending bookings</span>
-                <span className="font-semibold text-ink">{loading ? '—' : stats.todaysBookings}</span>
-              </div>
-              <div className="h-2 overflow-hidden rounded-full bg-mist">
-                <div className="h-full rounded-full bg-spark transition-all" style={{ width: loading ? '0%' : `${Math.min(stats.todaysBookings * 10, 100)}%` }} />
-              </div>
-            </div>
-            <div>
-              <div className="mb-2 flex justify-between gap-4 text-sm">
-                <span className="text-ink/70">Bookings waiting for review</span>
-                <span className="font-semibold text-ink">{loading ? '—' : stats.pendingBookings}</span>
-              </div>
-              <div className="h-2 overflow-hidden rounded-full bg-mist">
-                <div className="h-full rounded-full bg-court transition-all" style={{ width: loading ? '0%' : `${Math.min(stats.pendingBookings * 10, 100)}%` }} />
-              </div>
-            </div>
-          </div>
-        </section>
-
-        <section className="rounded-2xl border border-line bg-white p-5 shadow-sm sm:p-6">
-          <p className="text-xs font-semibold uppercase tracking-[0.16em] text-court">Quick access</p>
-          <h3 className="mt-1 font-display text-xl font-semibold text-ink">Manage SERV</h3>
-          <div className="mt-5 grid gap-2 sm:grid-cols-2 lg:grid-cols-1">
-            <Link to="/admin/bookings" className="flex items-center justify-between rounded-xl bg-mist px-4 py-3 text-sm font-medium text-ink transition-colors hover:bg-court hover:text-white">
-              Review bookings <span aria-hidden="true">→</span>
-            </Link>
-            <Link to="/admin/gallery" className="flex items-center justify-between rounded-xl bg-mist px-4 py-3 text-sm font-medium text-ink transition-colors hover:bg-court hover:text-white">
-              Update gallery <span aria-hidden="true">→</span>
-            </Link>
-          </div>
-        </section>
-      </div>
+      <BookingTrend days={stats?.days || []} loading={loading} />
     </AdminLayout>
   )
 }

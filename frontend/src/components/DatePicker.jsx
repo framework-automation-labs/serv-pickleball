@@ -77,7 +77,7 @@ export default function DatePicker({ value, onChange }) {
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: -6, scale: 0.97 }}
             transition={{ duration: 0.15 }}
-            className="absolute z-20 mt-2 bg-white rounded-xl shadow-lg border border-line p-4 w-72"
+            className="absolute z-20 mt-2 bg-card rounded-xl shadow-lg border border-line p-4 w-72 max-w-[calc(100vw-2rem)]"
           >
             <div className="flex items-center justify-between mb-3">
               <button
@@ -123,7 +123,7 @@ export default function DatePicker({ value, onChange }) {
                         : isSelected
                         ? 'bg-court text-white font-semibold'
                         : isToday
-                        ? 'bg-mist text-court font-semibold'
+                        ? 'bg-mist text-link font-semibold'
                         : 'text-ink/70 hover:bg-mist'
                     }`}
                   >

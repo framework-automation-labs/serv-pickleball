@@ -121,6 +121,20 @@ export function confirmedEmail({ referenceCode, itemLabel, totalLabel, verifyUrl
   `)
 }
 
+export function rescheduledEmail({ referenceCode, itemLabel, was, now, verifyUrl }) {
+  return wrapper(`
+    ${badge('RESCHEDULED', { fg: COLORS.court, bg: '#eaf1f6' })}
+    <p style="margin:0 0 8px;">Your booking for <strong>${esc(itemLabel)}</strong> has been moved to a new time.</p>
+    <p style="margin:0;">If you downloaded your receipt earlier, please download the updated one from the status page.</p>
+    ${referenceCard([
+      ['Reference', referenceCode],
+      ['Was', was],
+      ['Now', now],
+    ])}
+    ${button('View Status Online', verifyUrl)}
+  `)
+}
+
 export function rejectedEmail({ referenceCode, itemLabel, reason }) {
   return wrapper(`
     ${badge('COULD NOT CONFIRM', { fg: COLORS.danger, bg: COLORS.dangerBg })}

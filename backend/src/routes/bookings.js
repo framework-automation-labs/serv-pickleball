@@ -8,18 +8,20 @@ import { buildReceiptPdf, streamReceiptPdf } from '../lib/receiptPdf.js'
 import { requireAdmin } from '../middleware/requireAdmin.js'
 import { submissionLimiter, pdfLimiter, adminLimiter } from '../middleware/rateLimiter.js'
 import { sendMail } from '../lib/mailer.js'
-import { receivedEmail, confirmedEmail, rejectedEmail, adminNewReceiptAlert } from '../lib/emailTemplates.js'
+import { receivedEmail, confirmedEmail, rejectedEmail, rescheduledEmail, adminNewReceiptAlert } from '../lib/emailTemplates.js'
 
 const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:5173'
 const ADMIN_NOTIFICATION_EMAIL = process.env.ADMIN_NOTIFICATION_EMAIL
 
-const RATE_PER_HOUR = 300
+const RATE_PER_HOUR = 300 // fallback only — each court's real rate is courts.rate_per_hour
 
 // Must match frontend/src/lib/api.js (OPEN_HOUR / CLOSE_HOUR).
 const OPEN_HOUR = 9
 const CLOSE_HOUR = 24
 const MAX_SLOTS_PER_SUBMISSION = 6
 const MAX_ADVANCE_DAYS = 90
+// Reschedule policy: a booking can only be moved while its start is at least this far away.
+const RESCHEDULE_MIN_HOURS = 6
 // Without a payment gateway a pending receipt holds a slot until an
 // admin reviews it — cap how many unreviewed submissions one phone
 // number can have open at once so a single person can't lock the calendar.
@@ -121,7 +123,7 @@ function validatePayload({ fullName, phone, email, bookings }) {
       return 'Bookings must be between 9:00 AM and 12:00 midnight.'
     }
     if (!isRealDate(b.date)) return 'One of the selected dates is invalid.'
-    if (b.date < today || (b.date === today && startHour < nowHour)) {
+    if (b.date < today || (b.date === today && startHour <= nowHour)) {
       return 'You can\u2019t book a time that has already passed.'
     }
     if (b.date > lastDate) return `Bookings can only be made up to ${MAX_ADVANCE_DAYS} days ahead.`
@@ -216,7 +218,7 @@ router.post(
     const courtIds = [...new Set(bookings.map((b) => Number(b.courtId)))]
     const { data: courts, error: courtsError } = await supabaseAdmin
       .from('courts')
-      .select('id')
+      .select('id, rate_per_hour')
       .in('id', courtIds)
       .eq('status', 'active')
     if (courtsError) {
@@ -226,6 +228,9 @@ router.post(
     if ((courts || []).length !== courtIds.length) {
       return res.status(400).json({ error: 'One of the selected courts is not available.' })
     }
+
+    // Price comes from the court's own hourly rate (never from the client).
+    const rateByCourt = new Map(courts.map((c) => [c.id, Number(c.rate_per_hour) || RATE_PER_HOUR]))
 
     // Limit how many unreviewed submissions a single phone number can
     // have open at once (each one holds court slots until reviewed).
@@ -272,7 +277,7 @@ router.post(
       end_time: toTime(b.endHour),
       status: 'pending',
       payment_status: 'unpaid',
-      amount: (b.endHour - b.startHour) * RATE_PER_HOUR,
+      amount: (b.endHour - b.startHour) * rateByCourt.get(Number(b.courtId)),
       booking_group_id: groupId,
       receipt_path: receiptPath,
       receipt_hash: hash,
@@ -332,6 +337,7 @@ router.get(
       .from('bookings')
       .select('booking_date, start_time, end_time, status, amount, rejection_reason, reference_code, guest_name, courts(name)')
       .eq('booking_group_id', req.params.groupId)
+      .order('booking_date')
       .order('start_time')
 
     if (error) {
@@ -374,6 +380,7 @@ router.get(
       .from('bookings')
       .select('booking_date, start_time, end_time, status, amount, reference_code, guest_name, courts(name)')
       .eq('booking_group_id', req.params.groupId)
+      .order('booking_date')
       .order('start_time')
 
     if (error) {
@@ -474,7 +481,9 @@ router.patch(
           referenceCode: data[0].reference_code,
           guestName: data[0].guest_name,
           heading: 'COURT BOOKING CONFIRMED',
-          lines: data.map((b) => `${b.courts?.name} — ${b.booking_date}, ${b.start_time.slice(0, 5)}–${b.end_time.slice(0, 5)}`),
+          lines: [...data]
+            .sort((a, b) => `${a.booking_date} ${a.start_time}`.localeCompare(`${b.booking_date} ${b.start_time}`))
+            .map((b) => `${b.courts?.name} — ${b.booking_date}, ${b.start_time.slice(0, 5)}–${b.end_time.slice(0, 5)}`),
           totalLabel: `Total Paid: \u20b1${total.toLocaleString()}`,
           verifyPath: `/confirmation/${groupId}`,
         })
@@ -499,6 +508,120 @@ router.patch(
       }
     } catch (err) {
       console.error('[review] post-review email failed:', err)
+    }
+  })
+)
+
+const hourLabel = (h) => `${h % 12 === 0 ? 12 : h % 12}:00 ${h % 24 >= 12 ? 'PM' : 'AM'}`
+const endHourOf = (t) => (parseInt(t, 10) === 0 ? 24 : parseInt(t, 10))
+
+// PATCH /api/bookings/:bookingId/reschedule  (admin only)
+//   body: { courtId, date: 'YYYY-MM-DD', startHour }
+//
+// Moves ONE court/time block to another court, date and/or start hour, keeping its
+// length. Rules: only pending/confirmed blocks, only while the ORIGINAL start is
+// at least 6 hours away, and never into the past. Overlaps with other bookings or
+// blocked slots are still refused by the database itself (exclusion constraint /
+// blocked-slot trigger), so two admins can't double-book each other.
+router.patch(
+  '/:bookingId/reschedule',
+  adminLimiter,
+  requireAdmin,
+  wrap(async (req, res) => {
+    const { bookingId } = req.params
+    if (!UUID_RE.test(bookingId)) return res.status(404).json({ error: 'Booking not found.' })
+
+    const { courtId, date, startHour } = req.body || {}
+    const newCourtId = Number(courtId)
+    if (!Number.isInteger(newCourtId) || newCourtId <= 0) return res.status(400).json({ error: 'Choose a valid court.' })
+    if (!isRealDate(date)) return res.status(400).json({ error: 'Choose a valid date.' })
+    if (!Number.isInteger(startHour)) return res.status(400).json({ error: 'Choose a valid start time.' })
+
+    const { data: booking, error: findError } = await supabaseAdmin
+      .from('bookings')
+      .select('id, court_id, booking_date, start_time, end_time, status, reference_code, guest_email, courts(name)')
+      .eq('id', bookingId)
+      .maybeSingle()
+    if (findError) {
+      console.error('[reschedule] lookup failed:', findError)
+      return res.status(500).json({ error: 'Could not load this booking.' })
+    }
+    if (!booking) return res.status(404).json({ error: 'Booking not found.' })
+    if (!['pending', 'confirmed'].includes(booking.status)) {
+      return res.status(409).json({ error: 'Only pending or confirmed bookings can be rescheduled.' })
+    }
+
+    // 6-hour rule, measured from the booking's current start (Philippine time, UTC+8).
+    const originalStart = new Date(`${booking.booking_date}T${booking.start_time.slice(0, 8)}+08:00`).getTime()
+    if (originalStart - Date.now() < RESCHEDULE_MIN_HOURS * 60 * 60 * 1000) {
+      return res.status(409).json({
+        error: `Rescheduling is only available up to ${RESCHEDULE_MIN_HOURS} hours before the reservation.`,
+      })
+    }
+
+    const oldStartHour = parseInt(booking.start_time, 10)
+    const duration = endHourOf(booking.end_time) - oldStartHour
+    const newEndHour = startHour + duration
+    if (startHour < OPEN_HOUR || newEndHour > CLOSE_HOUR) {
+      return res.status(400).json({ error: 'The new time must be between 9:00 AM and 12:00 midnight.' })
+    }
+
+    const { today, hour: nowHour } = manilaNow()
+    if (date < today || (date === today && startHour <= nowHour)) {
+      return res.status(400).json({ error: 'You can\u2019t move a booking to a time that has already passed.' })
+    }
+    if (date > addDays(today, MAX_ADVANCE_DAYS)) {
+      return res.status(400).json({ error: `Bookings can only be made up to ${MAX_ADVANCE_DAYS} days ahead.` })
+    }
+    if (newCourtId === booking.court_id && date === booking.booking_date && startHour === oldStartHour) {
+      return res.status(400).json({ error: 'That is the same time slot.' })
+    }
+
+    const { data: court } = await supabaseAdmin
+      .from('courts')
+      .select('id, name')
+      .eq('id', newCourtId)
+      .eq('status', 'active')
+      .maybeSingle()
+    if (!court) return res.status(400).json({ error: 'That court is not available.' })
+
+    const { error: updateError } = await supabaseAdmin
+      .from('bookings')
+      .update({ court_id: newCourtId, booking_date: date, start_time: toTime(startHour), end_time: toTime(newEndHour) })
+      .eq('id', bookingId)
+
+    if (updateError) {
+      if (updateError.code === '23P01') {
+        return res.status(409).json({ error: 'That time slot was just taken. Please pick another.' })
+      }
+      if (/blocked/i.test(updateError.message || '')) {
+        return res.status(409).json({ error: 'That time slot is blocked and unavailable.' })
+      }
+      console.error('[reschedule] update failed:', updateError)
+      return res.status(500).json({ error: 'Could not reschedule this booking.' })
+    }
+
+    res.json({ ok: true })
+
+    // Best-effort email after responding — must never throw out of the handler.
+    try {
+      if (!booking.guest_email) return
+      const was = `${booking.courts?.name}, ${booking.booking_date}, ${hourLabel(oldStartHour)} – ${hourLabel(endHourOf(booking.end_time))}`
+      const now = `${court.name}, ${date}, ${hourLabel(startHour)} – ${hourLabel(newEndHour)}`
+      const { data: grp } = await supabaseAdmin.from('bookings').select('booking_group_id').eq('id', bookingId).maybeSingle()
+      sendMail({
+        to: booking.guest_email,
+        subject: `Your booking was rescheduled — ${booking.reference_code}`,
+        html: rescheduledEmail({
+          referenceCode: booking.reference_code,
+          itemLabel: 'your court booking',
+          was,
+          now,
+          verifyUrl: `${FRONTEND_URL}/confirmation/${grp?.booking_group_id}`,
+        }),
+      })
+    } catch (err) {
+      console.error('[reschedule] email failed:', err)
     }
   })
 )

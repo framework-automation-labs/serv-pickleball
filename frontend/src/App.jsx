@@ -1,5 +1,7 @@
 import { Routes, Route, Outlet } from 'react-router-dom'
 import Home from './pages/Home.jsx'
+import PageTransition from './components/PageTransition.jsx'
+import ThemeToggle from './components/ThemeToggle.jsx'
 import Booking from './pages/Booking.jsx'
 import Confirmation from './pages/Confirmation.jsx'
 import Checkout from './pages/Checkout.jsx'
@@ -14,12 +16,14 @@ import ProtectedAdminRoute from './components/admin/ProtectedAdminRoute.jsx'
 
 export default function App() {
   return (
+    <>
+    <ThemeToggle />
     <Routes>
       <Route path="/" element={<Home />} />
-      <Route path="/book" element={<Booking />} />
+      <Route path="/book" element={<PageTransition><Booking /></PageTransition>} />
       <Route path="/details" element={<Details />} />
-      <Route path="/checkout" element={<Checkout />} />
-      <Route path="/confirmation/:bookingId" element={<Confirmation />} />
+      <Route path="/checkout" element={<PageTransition><Checkout /></PageTransition>} />
+      <Route path="/confirmation/:bookingId" element={<PageTransition><Confirmation /></PageTransition>} />
 
       {/* Not linked from any nav — only reachable by typing the URL. */}
       <Route
@@ -65,5 +69,6 @@ export default function App() {
         />
       </Route>
     </Routes>
+    </>
   )
 }

@@ -13,7 +13,7 @@ const experiences = [
   {
     number: '02',
     title: 'Compete',
-    description: 'Friendly matches and challenges that keep the game moving.',
+    description: 'Tournaments, events, and challenges that keep the game moving.',
     image: 'serv-about-2.jpg',
   },
   {
@@ -35,9 +35,10 @@ export default function AboutSection() {
   }, [])
 
   return (
-    <section id="about" className="bg-[#F5F7F8] px-6 py-20 sm:px-8 lg:px-12 lg:py-28">
+    <>
+    <section id="about" className="bg-mist px-6 pt-20 sm:px-8 lg:px-12 lg:pt-28">
       <div className="mx-auto max-w-7xl">
-        <div className="mb-20 grid items-center gap-10 lg:grid-cols-2 lg:gap-16">
+        <div className="grid items-center gap-10 pb-20 lg:grid-cols-2 lg:gap-16 lg:pb-28">
           <motion.div
             initial={{ opacity: 0, x: -20 }}
             whileInView={{ opacity: 1, x: 0 }}
@@ -78,20 +79,20 @@ export default function AboutSection() {
             viewport={{ once: true, amount: 0.4 }}
             transition={{ duration: 0.5, delay: 0.1 }}
           >
-            <p className="mb-2 text-sm font-bold uppercase tracking-[0.25em] text-[#2F6690]">
+            <p className="mb-2 text-sm font-bold uppercase tracking-[0.25em] text-link">
               About SERV
             </p>
-            <h2 className="mb-4 font-display text-4xl font-black uppercase leading-none tracking-tight text-[#14212B] sm:text-5xl">
+            <h2 className="mb-4 font-display text-4xl font-black uppercase leading-none tracking-tight text-ink sm:text-5xl">
               Built for
               <span className="block text-[#E8735C]">real play.</span>
             </h2>
-            <p className="mb-6 leading-relaxed text-[#14212B]/60">
-              Three indoor courts, professionally built with high-grade silica sand and River
+            <p className="mb-6 leading-relaxed text-ink/60">
+              Four indoor courts, including our Champion's Court, professionally built with high-grade silica sand and River
               nets — covered and lit day to night, so the game never stops for weather or sunset.
             </p>
-            <ul className="space-y-2 text-sm text-[#14212B]/70">
+            <ul className="space-y-2 text-sm text-ink/70">
               <li className="flex gap-2">
-                <span className="font-bold text-[#E8735C]">•</span> 3 indoor courts, professionally built
+                <span className="font-bold text-[#E8735C]">•</span> 4 indoor courts, including the Champion's Court
               </li>
               <li className="flex gap-2">
                 <span className="font-bold text-[#E8735C]">•</span> Open daily, 9:00 AM – 12:00 Midnight
@@ -102,20 +103,24 @@ export default function AboutSection() {
             </ul>
           </motion.div>
         </div>
+      </div>
+    </section>
 
+    <section id="experience" className="bg-sand px-6 py-20 sm:px-8 lg:px-12 lg:py-28">
+      <div className="mx-auto max-w-7xl">
         <div className="mb-12 flex flex-col gap-5 lg:mb-16 lg:flex-row lg:items-end lg:justify-between">
             <div>
-              <p className="mb-3 text-sm font-bold uppercase tracking-[0.25em] text-[#2F6690]">
+              <p className="mb-3 text-sm font-bold uppercase tracking-[0.25em] text-link">
                 The SERV Experience
               </p>
 
-              <h2 className="max-w-3xl font-display text-4xl font-black uppercase leading-none tracking-tight text-[#14212B] sm:text-5xl lg:text-7xl">
-                Built around
-                <span className="block text-[#E8735C]">real play.</span>
+              <h2 className="max-w-3xl font-display text-4xl font-black uppercase leading-none tracking-tight text-ink sm:text-5xl lg:text-7xl">
+                More than
+                <span className="block text-[#E8735C]">a place to play.</span>
               </h2>
             </div>
 
-            <p className="max-w-md text-sm leading-6 text-[#14212B]/60 lg:text-base">
+            <p className="max-w-md text-sm leading-6 text-ink/60 lg:text-base">
               More than a place to play. SERV brings courts, competition, and
               community together under one roof.
             </p>
@@ -138,10 +143,7 @@ export default function AboutSection() {
               <div className="absolute inset-0 bg-[#16324F]/55 transition-colors duration-300 group-hover:bg-[#16324F]/45" />
 
               <div className="relative flex min-h-[420px] flex-col justify-between p-7 sm:p-8">
-                <div className="flex items-start justify-between">
-                  <span className="font-display text-sm font-bold tracking-[0.2em] text-[#E8735C]">
-                    {experience.number}
-                  </span>
+                <div className="flex items-start justify-between"><span />
 
                   <motion.div
                     whileHover={{ rotate: 45 }}
@@ -166,5 +168,6 @@ export default function AboutSection() {
         </div>
       </div>
     </section>
+    </>
   )
 }

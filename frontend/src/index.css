@@ -1,3 +1,37 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+/* ---- Theme: light = "Warm sand", dark = "Night court" (space-separated RGB so Tailwind opacity works) ---- */
+:root{--mist:253 244 238;--sand:249 232 221;--card:255 253 250;--line:235 221 208;--ink:20 33 43;--heading:22 50 79;--court:47 102 144;--link:47 102 144;--accent:201 90 68;color-scheme:light}
+.dark{--mist:15 36 56;--sand:19 41 63;--card:27 59 92;--line:42 74 107;--ink:234 240 246;--heading:244 247 250;--court:61 122 174;--link:127 177 220;--accent:244 144 122;color-scheme:dark}
+html{scroll-behavior:smooth;-webkit-text-size-adjust:100%}
+body{overflow-x:hidden;background:rgb(var(--mist));color:rgb(var(--ink))}
+img,video,svg{max-width:100%}
+:focus-visible{outline:2px solid #E8735C;outline-offset:2px}
+@keyframes shimmer{0%{background-position:-200% 0}100%{background-position:200% 0}}
+.skeleton{background:linear-gradient(90deg,#E9EEF2 25%,#F5F7F8 50%,#E9EEF2 75%);background-size:200% 100%;animation:shimmer 1.4s infinite}
+@keyframes ball{0%,100%{transform:translateY(0)}50%{transform:translateY(-18px)}}
+.ball{animation:ball .7s cubic-bezier(.3,0,.4,1) infinite}
+@media (prefers-reduced-motion:reduce){*,*::before,*::after{animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important;scroll-behavior:auto!important}}
+
+/* Dark-mode versions of the few built-in Tailwind colors used for status messages */
+.dark .bg-red-50{background-color:rgb(127 29 29/.35)}
+.dark .bg-red-100{background-color:rgb(127 29 29/.5)}
+.dark .text-red-600,.dark .text-red-700{color:#FCA5A5}
+.dark .bg-green-100{background-color:rgb(22 101 52/.5)}
+.dark .text-green-600{color:#86EFAC}
+.dark .bg-amber-50{background-color:rgb(120 53 15/.35)}
+.dark .bg-amber-100{background-color:rgb(146 64 14/.5)}
+.dark .border-amber-200{border-color:rgb(180 83 9/.5)}
+.dark .text-amber-600{color:#FCD34D}
+.dark .text-amber-800{color:#FDE68A}
+.dark .bg-slate-100{background-color:rgb(255 255 255/.08)}
+.dark .text-slate-600{color:#CBD5E1}
+.dark .skeleton{background:linear-gradient(90deg,#1B3B5C 25%,#24496E 50%,#1B3B5C 75%);background-size:200% 100%}
+/* Circular reveal when switching theme (View Transitions API) */
+::view-transition-old(root),::view-transition-new(root){animation:none;mix-blend-mode:normal}
+::view-transition-old(root){z-index:1}
+::view-transition-new(root){z-index:2}
+/* Fallback: gentle color crossfade for browsers without View Transitions */
+html.theme-fade *,html.theme-fade *::before,html.theme-fade *::after{transition:background-color .4s ease,color .4s ease,border-color .4s ease,fill .4s ease,stroke .4s ease!important}

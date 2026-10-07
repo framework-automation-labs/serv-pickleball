@@ -22,7 +22,7 @@ export default function ReceiptViewerModal({ path, onClose }) {
   }, [path])
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center px-6 bg-ink/60" onClick={onClose}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center px-4 sm:px-6 bg-ink/60" onClick={onClose}>
       <div
         className="bg-white rounded-2xl shadow-xl p-4 max-w-lg w-full max-h-[85vh] overflow-auto"
         onClick={(e) => e.stopPropagation()}
