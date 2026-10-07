@@ -120,8 +120,8 @@ async function authedPatch(path, body) {
 
 // Moves one booked block to another court / date / start hour (admin only; the server
 // enforces the 6-hour rule and refuses overlaps).
-export function rescheduleBooking(bookingId, { courtId, date, startHour }) {
-  return authedPatch(`/api/bookings/${bookingId}/reschedule`, { courtId, date, startHour })
+export function rescheduleBooking(bookingId, { courtId, date, startHour, sourceStartHour }) {
+  return authedPatch(`/api/bookings/${bookingId}/reschedule`, { courtId, date, startHour, sourceStartHour })
 }
 
 export function reviewBookingGroup(groupId, action, reason) {

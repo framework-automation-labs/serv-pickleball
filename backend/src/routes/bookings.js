@@ -518,11 +518,9 @@ const endHourOf = (t) => (parseInt(t, 10) === 0 ? 24 : parseInt(t, 10))
 // PATCH /api/bookings/:bookingId/reschedule  (admin only)
 //   body: { courtId, date: 'YYYY-MM-DD', startHour }
 //
-// Moves ONE court/time block to another court, date and/or start hour, keeping its
-// length. Rules: only pending/confirmed blocks, only while the ORIGINAL start is
-// at least 6 hours away, and never into the past. Overlaps with other bookings or
-// blocked slots are still refused by the database itself (exclusion constraint /
-// blocked-slot trigger), so two admins can't double-book each other.
+// Moves one hour from a booking block. Any unselected hours remain booked in place.
+// Only pending/confirmed hours at least 6 hours away may be moved, and destination
+// overlaps are refused by the database exclusion constraint / blocked-slot trigger.
 router.patch(
   '/:bookingId/reschedule',
   adminLimiter,
@@ -531,11 +529,12 @@ router.patch(
     const { bookingId } = req.params
     if (!UUID_RE.test(bookingId)) return res.status(404).json({ error: 'Booking not found.' })
 
-    const { courtId, date, startHour } = req.body || {}
+    const { courtId, date, startHour, sourceStartHour } = req.body || {}
     const newCourtId = Number(courtId)
     if (!Number.isInteger(newCourtId) || newCourtId <= 0) return res.status(400).json({ error: 'Choose a valid court.' })
     if (!isRealDate(date)) return res.status(400).json({ error: 'Choose a valid date.' })
     if (!Number.isInteger(startHour)) return res.status(400).json({ error: 'Choose a valid start time.' })
+    if (!Number.isInteger(sourceStartHour)) return res.status(400).json({ error: 'Choose the booking hour to move.' })
 
     const { data: booking, error: findError } = await supabaseAdmin
       .from('bookings')
@@ -551,17 +550,21 @@ router.patch(
       return res.status(409).json({ error: 'Only pending or confirmed bookings can be rescheduled.' })
     }
 
-    // 6-hour rule, measured from the booking's current start (Philippine time, UTC+8).
-    const originalStart = new Date(`${booking.booking_date}T${booking.start_time.slice(0, 8)}+08:00`).getTime()
+    const oldStartHour = parseInt(booking.start_time, 10)
+    const oldEndHour = endHourOf(booking.end_time)
+    if (sourceStartHour < oldStartHour || sourceStartHour + 1 > oldEndHour) {
+      return res.status(409).json({ error: 'That booking hour has changed. Refresh the schedule and try again.' })
+    }
+
+    // The six-hour policy applies to the selected hour, not earlier hours in the same block.
+    const originalStart = new Date(`${booking.booking_date}T${toTime(sourceStartHour)}+08:00`).getTime()
     if (originalStart - Date.now() < RESCHEDULE_MIN_HOURS * 60 * 60 * 1000) {
       return res.status(409).json({
         error: `Rescheduling is only available up to ${RESCHEDULE_MIN_HOURS} hours before the reservation.`,
       })
     }
 
-    const oldStartHour = parseInt(booking.start_time, 10)
-    const duration = endHourOf(booking.end_time) - oldStartHour
-    const newEndHour = startHour + duration
+    const newEndHour = startHour + 1
     if (startHour < OPEN_HOUR || newEndHour > CLOSE_HOUR) {
       return res.status(400).json({ error: 'The new time must be between 9:00 AM and 12:00 midnight.' })
     }
@@ -573,7 +576,7 @@ router.patch(
     if (date > addDays(today, MAX_ADVANCE_DAYS)) {
       return res.status(400).json({ error: `Bookings can only be made up to ${MAX_ADVANCE_DAYS} days ahead.` })
     }
-    if (newCourtId === booking.court_id && date === booking.booking_date && startHour === oldStartHour) {
+    if (newCourtId === booking.court_id && date === booking.booking_date && startHour === sourceStartHour) {
       return res.status(400).json({ error: 'That is the same time slot.' })
     }
 
@@ -585,10 +588,16 @@ router.patch(
       .maybeSingle()
     if (!court) return res.status(400).json({ error: 'That court is not available.' })
 
-    const { error: updateError } = await supabaseAdmin
-      .from('bookings')
-      .update({ court_id: newCourtId, booking_date: date, start_time: toTime(startHour), end_time: toTime(newEndHour) })
-      .eq('id', bookingId)
+    const { error: updateError } = await supabaseAdmin.rpc('reschedule_booking_hour', {
+      p_booking_id: bookingId,
+      p_expected_date: booking.booking_date,
+      p_expected_start_time: booking.start_time,
+      p_expected_end_time: booking.end_time,
+      p_source_start_hour: sourceStartHour,
+      p_new_court_id: newCourtId,
+      p_new_date: date,
+      p_new_start_hour: startHour,
+    })
 
     if (updateError) {
       if (updateError.code === '23P01') {
@@ -596,6 +605,10 @@ router.patch(
       }
       if (/blocked/i.test(updateError.message || '')) {
         return res.status(409).json({ error: 'That time slot is blocked and unavailable.' })
+      }
+      if (updateError.code === 'P0002') return res.status(404).json({ error: 'Booking not found.' })
+      if (updateError.code === '40001') {
+        return res.status(409).json({ error: 'That booking hour has changed. Refresh the schedule and try again.' })
       }
       console.error('[reschedule] update failed:', updateError)
       return res.status(500).json({ error: 'Could not reschedule this booking.' })
@@ -606,7 +619,7 @@ router.patch(
     // Best-effort email after responding — must never throw out of the handler.
     try {
       if (!booking.guest_email) return
-      const was = `${booking.courts?.name}, ${booking.booking_date}, ${hourLabel(oldStartHour)} – ${hourLabel(endHourOf(booking.end_time))}`
+      const was = `${booking.courts?.name}, ${booking.booking_date}, ${hourLabel(sourceStartHour)} – ${hourLabel(sourceStartHour + 1)}`
       const now = `${court.name}, ${date}, ${hourLabel(startHour)} – ${hourLabel(newEndHour)}`
       const { data: grp } = await supabaseAdmin.from('bookings').select('booking_group_id').eq('id', bookingId).maybeSingle()
       sendMail({

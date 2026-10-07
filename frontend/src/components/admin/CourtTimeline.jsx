@@ -3,7 +3,7 @@ import { motion } from 'motion/react'
 import { generateHourSlots, isHourPast } from '../../lib/api.js'
 import {
   RESCHEDULE_MIN_HOURS,
-  canReschedule,
+  canRescheduleHour,
   endHour,
   formatDay,
   formatHourShort,
@@ -30,6 +30,7 @@ export default function CourtTimeline({ courts, bookings, blocked, date, loading
   const [selectedId, setSelectedId] = useState(null)
   const [mode, setMode] = useState('off') // 'off' | 'pick' | 'place'
   const [moving, setMoving] = useState(null) // the booking row being moved
+  const [sourceHour, setSourceHour] = useState(null)
   const [target, setTarget] = useState(null) // { courtId, startHour }
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
@@ -39,7 +40,7 @@ export default function CourtTimeline({ courts, bookings, blocked, date, loading
   const isToday = date === localDateString()
   const nowHour = isToday ? new Date().getHours() : -1
   const rescheduling = mode !== 'off'
-  const duration = moving ? endHour(moving.end_time) - startHour(moving.start_time) : 0
+  const duration = moving ? 1 : 0
 
   function cellFor(courtId, hour) {
     const booking = bookings.find(
@@ -52,16 +53,16 @@ export default function CourtTimeline({ courts, bookings, blocked, date, loading
     return { type: isBlocked ? 'blocked' : 'free' }
   }
 
-  // Can the moving block start at `hour` on this court (on the date being shown)?
-  // Its own current slot counts as free, so it can be nudged within itself.
+  // Can the selected hour move to `hour` on this court (on the date being shown)?
+  // Its source slot is free because the server removes it before inserting the move.
   function isValidStart(courtId, hour) {
     if (!moving || hour + duration > 24) return false
-    if (courtId === moving.court_id && date === moving.booking_date && hour === startHour(moving.start_time)) return false
+    if (courtId === moving.court_id && date === moving.booking_date && hour === sourceHour) return false
     for (let h = hour; h < hour + duration; h++) {
       if (isHourPast(date, h)) return false
       const cell = cellFor(courtId, h)
       if (cell.type === 'blocked') return false
-      if (cell.booking && cell.booking.id !== moving.id) return false
+      if (cell.booking && !(cell.booking.id === moving.id && h === sourceHour)) return false
     }
     return true
   }
@@ -69,18 +70,20 @@ export default function CourtTimeline({ courts, bookings, blocked, date, loading
   const inTarget = (courtId, hour) =>
     target && target.courtId === courtId && hour >= target.startHour && hour < target.startHour + duration
 
-  function startReschedule(booking = null) {
+  function startReschedule(booking = null, hour = null) {
     setNotice('')
     setError('')
     setSelectedId(null)
     setTarget(null)
     setMoving(booking)
+    setSourceHour(hour)
     setMode(booking ? 'place' : 'pick')
   }
 
   function exitReschedule() {
     setMode('off')
     setMoving(null)
+    setSourceHour(null)
     setTarget(null)
     setError('')
   }
@@ -95,7 +98,7 @@ export default function CourtTimeline({ courts, bookings, blocked, date, loading
     setBusy(true)
     setError('')
     try {
-      await onReschedule(moving, { courtId: target.courtId, date, startHour: target.startHour })
+      await onReschedule(moving, { courtId: target.courtId, date, startHour: target.startHour, sourceStartHour: sourceHour })
       const courtName = courts.find((c) => c.id === target.courtId)?.name
       setNotice(
         `Moved ${moving.guest_name || 'booking'} to ${courtName}, ${formatDay(date)}, ${hourLabel(target.startHour)} – ${hourLabel(target.startHour + duration)}.`,
@@ -109,7 +112,18 @@ export default function CourtTimeline({ courts, bookings, blocked, date, loading
 
   const selected = bookings.find((b) => b.id === selectedId) || null
   const gridStyle = { gridTemplateColumns: `6.5rem repeat(${hours.length}, minmax(2.25rem, 1fr))` }
-  const eligibleCount = bookings.filter((b) => canReschedule(b)).length
+  const eligibleCount = bookings.reduce((count, booking) => {
+    for (let hour = startHour(booking.start_time); hour < endHour(booking.end_time); hour++) {
+      if (canRescheduleHour(booking, hour)) count++
+    }
+    return count
+  }, 0)
+  const hasReschedulableHour = (booking) => {
+    for (let hour = startHour(booking.start_time); hour < endHour(booking.end_time); hour++) {
+      if (canRescheduleHour(booking, hour)) return true
+    }
+    return false
+  }
 
   const fromCourt = moving ? courts.find((c) => c.id === moving.court_id) : null
   const toCourt = target ? courts.find((c) => c.id === target.courtId) : null
@@ -175,11 +189,11 @@ export default function CourtTimeline({ courts, bookings, blocked, date, loading
           <p className="font-medium text-ink">Step 2 · Pick the new time</p>
           <p className="mt-0.5 text-ink/70">
             Moving <span className="font-medium text-ink">{moving.guest_name || 'booking'}</span> ·{' '}
-            {moving.courts?.name}, {formatDay(moving.booking_date)}, {formatTime(moving.start_time)} –{' '}
-            {formatTime(moving.end_time)} ({duration}h)
+            {moving.courts?.name}, {formatDay(moving.booking_date)}, {hourLabel(sourceHour)} –{' '}
+            {hourLabel(sourceHour + 1)} (1h)
           </p>
           <p className="mt-0.5 text-xs text-ink/50">
-            Tap a highlighted green start time — it needs {duration} free {duration === 1 ? 'hour' : 'hours'} in a row.
+            Tap a highlighted green start time — one free hour is required.
           </p>
           <div className="mt-3 flex flex-wrap items-end gap-3">
             <div>
@@ -244,13 +258,14 @@ export default function CourtTimeline({ courts, bookings, blocked, date, loading
 
                   // ----- Step 1: pick a booked block -----
                   if (mode === 'pick' && cell.booking) {
-                    const ok = canReschedule(cell.booking)
+                    const ok = canRescheduleHour(cell.booking, h)
                     return ok ? (
                       <button
                         key={h}
                         type="button"
                         onClick={() => {
                           setMoving(cell.booking)
+                          setSourceHour(h)
                           setTarget(null)
                           setMode('place')
                         }}
@@ -263,7 +278,7 @@ export default function CourtTimeline({ courts, bookings, blocked, date, loading
                       <div
                         key={h}
                         className={`${baseCls} flex cursor-not-allowed items-center justify-center opacity-35`}
-                        title={`Can't reschedule — starts in less than ${RESCHEDULE_MIN_HOURS} hours or is finished`}
+                        title={`Can't reschedule this hour — it starts in less than ${RESCHEDULE_MIN_HOURS} hours or is finished`}
                         aria-label={`${label}, can't be rescheduled`}
                       >
                         {(cell.booking.guest_name || '?').slice(0, 1).toUpperCase()}
@@ -273,7 +288,7 @@ export default function CourtTimeline({ courts, bookings, blocked, date, loading
 
                   // ----- Step 2: pick the new start time -----
                   if (mode === 'place') {
-                    if (cell.booking && cell.booking.id === moving.id) {
+                    if (cell.booking && cell.booking.id === moving.id && h === sourceHour) {
                       return (
                         <div
                           key={h}
@@ -297,7 +312,7 @@ export default function CourtTimeline({ courts, bookings, blocked, date, loading
                         </button>
                       )
                     }
-                    if (!cell.booking && isValidStart(court.id, h)) {
+                    if ((!cell.booking || (cell.booking.id === moving.id && h === sourceHour)) && isValidStart(court.id, h)) {
                       return (
                         <button
                           key={h}
@@ -350,8 +365,8 @@ export default function CourtTimeline({ courts, bookings, blocked, date, loading
           <p className="text-sm text-ink/80">
             <span className="font-medium text-ink">{moving.guest_name || 'Booking'}</span> will move from{' '}
             <span className="font-medium">
-              {moving.courts?.name}, {formatDay(moving.booking_date)}, {formatTime(moving.start_time)} –{' '}
-              {formatTime(moving.end_time)}
+              {moving.courts?.name}, {formatDay(moving.booking_date)}, {hourLabel(sourceHour)} –{' '}
+              {hourLabel(sourceHour + 1)}
             </span>{' '}
             to{' '}
             <span className="font-medium text-ink">
@@ -412,13 +427,13 @@ export default function CourtTimeline({ courts, bookings, blocked, date, loading
             </p>
           </div>
           {onReschedule &&
-            (canReschedule(selected) ? (
+            (hasReschedulableHour(selected) ? (
               <button
                 type="button"
-                onClick={() => startReschedule(selected)}
+                onClick={() => startReschedule()}
                 className="rounded-lg border border-spark px-3 py-1.5 text-xs font-medium text-spark hover:bg-spark/5"
               >
-                Reschedule this booking
+                Choose an hour to reschedule
               </button>
             ) : (
               <span className="text-xs text-ink/40">

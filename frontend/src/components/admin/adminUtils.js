@@ -68,9 +68,14 @@ export function bookingStartMs(booking) {
   return new Date(`${booking.booking_date}T${booking.start_time.slice(0, 8)}+08:00`).getTime()
 }
 
-export function canReschedule(booking, now = Date.now()) {
+export function canRescheduleHour(booking, hour, now = Date.now()) {
+  const hourStart = bookingStartMs(booking) + (hour - startHour(booking.start_time)) * 60 * 60 * 1000
   return (
     ['pending', 'confirmed'].includes(booking.status) &&
-    bookingStartMs(booking) - now >= RESCHEDULE_MIN_HOURS * 60 * 60 * 1000
+    hourStart - now >= RESCHEDULE_MIN_HOURS * 60 * 60 * 1000
   )
+}
+
+export function canReschedule(booking, now = Date.now()) {
+  return canRescheduleHour(booking, startHour(booking.start_time), now)
 }
