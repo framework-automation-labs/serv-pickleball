@@ -326,7 +326,7 @@ export default function Booking() {
                         transition={{ type: 'spring', stiffness: 500, damping: 14 }}
                         className="inline-block"
                       >
-                        {formatHour(hour)}
+                        {formatHour(hour)} – {formatHour(hour + 1)}
                       </motion.span>
                       {selected && (
                         <motion.span

@@ -115,6 +115,23 @@ export default function ManageBookings() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [view, courtDate])
 
+  useEffect(() => {
+    function refreshVisibleBookings() {
+      if (document.visibilityState !== 'visible') return
+      loadBookings({ silent: true })
+      if (view === 'courts') loadSchedule()
+    }
+
+    const timer = setInterval(refreshVisibleBookings, 60000)
+    document.addEventListener('visibilitychange', refreshVisibleBookings)
+    return () => {
+      clearInterval(timer)
+      document.removeEventListener('visibilitychange', refreshVisibleBookings)
+    }
+    // Refresh uses the current list filters and schedule date.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [date, statusFilter, limit, view, courtDate])
+
   // Moves one booked block (the server enforces the 6-hour rule), then refreshes both views.
   async function rescheduleBlock(booking, target) {
     await rescheduleBooking(booking.id, target)

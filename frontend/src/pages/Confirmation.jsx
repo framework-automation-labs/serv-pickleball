@@ -148,8 +148,7 @@ export default function Confirmation() {
             </svg>
             <p>
               <span className="font-semibold">No need to rush.</span> You can wait on this screen and your
-              receipt will appear here once the admin approves. Or just wait for the email we'll send you
-              when it's approved (if you entered an email).
+              receipt will appear here once the admin approves. We'll also email you when it's approved.
             </p>
           </div>
         )}

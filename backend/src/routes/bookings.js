@@ -98,10 +98,8 @@ function validatePayload({ fullName, phone, email, bookings }) {
   if (typeof phone !== 'string' || !PHONE_RE.test(phone.trim())) {
     return 'Please enter a valid phone number.'
   }
-  if (email != null && email !== '') {
-    if (typeof email !== 'string' || email.trim().length > 254 || !EMAIL_RE.test(email.trim())) {
-      return 'Please enter a valid email address.'
-    }
+  if (typeof email !== 'string' || !email.trim() || email.trim().length > 254 || !EMAIL_RE.test(email.trim())) {
+    return 'Please enter a valid email address.'
   }
   if (!Array.isArray(bookings) || bookings.length === 0) {
     return 'Missing court selection.'
@@ -167,7 +165,7 @@ router.get(
 )
 
 // POST /api/bookings  (multipart/form-data)
-//   payload: JSON string — { fullName, phone, email?, bookings: [{courtId, date, startHour, endHour}] }
+//   payload: JSON string — { fullName, phone, email, bookings: [{courtId, date, startHour, endHour}] }
 //   receipt: image file — the GCash payment screenshot
 //
 // Writes the booking(s) immediately with status 'pending' — nothing
@@ -199,7 +197,7 @@ router.post(
 
     const fullName = payload.fullName.trim()
     const phone = payload.phone.trim()
-    const email = payload.email ? payload.email.trim() : null
+    const email = payload.email.trim()
     const { bookings } = payload
 
     // The client-declared mimetype is untrusted — only accept files that

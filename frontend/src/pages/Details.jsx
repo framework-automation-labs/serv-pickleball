@@ -39,7 +39,8 @@ export default function Details() {
     else if (fullName.trim().length > 100) e.fullName = 'Name is too long (max 100 characters).'
     const digits = phone.replace(/\D/g, '')
     if (!/^(09\d{9}|639\d{9})$/.test(digits)) e.phone = 'Enter a valid mobile number, like 0917 123 4567.'
-    if (email.trim() && !/^[^\s@<>"']+@[^\s@<>"']+\.[^\s@<>"']+$/.test(email.trim())) e.email = 'Enter a valid email or leave it blank.'
+    if (!email.trim()) e.email = 'Enter your email address.'
+    else if (!/^[^\s@<>"']+@[^\s@<>"']+\.[^\s@<>"']+$/.test(email.trim())) e.email = 'Enter a valid email address.'
     return e
   }
 
@@ -100,9 +101,9 @@ export default function Details() {
           </div>
           <div>
             <label htmlFor="email" className={labelCls}>
-              Email <span className="font-normal text-ink/40">(optional, to get your receipt)</span>
+              Email <span className="font-normal text-ink/40">(required for booking updates and your receipt)</span>
             </label>
-            <input id="email" type="email" autoComplete="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="juan@email.com" className={inputCls} />
+            <input id="email" type="email" autoComplete="email" required value={email} onChange={(e) => setEmail(e.target.value)} placeholder="juan@email.com" className={inputCls} />
             {err('email')}
           </div>
           <button
