@@ -2,9 +2,7 @@ import { useEffect, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { motion, AnimatePresence } from 'motion/react'
 import { BallLoader } from '../components/Loader.jsx'
-import { fetchBookingStatus, formatHour } from '../lib/api'
-
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000'
+import { API_URL, fetchBookingStatus, formatHour } from '../lib/api'
 
 const STATUS_COPY = {
   pending: {
