@@ -16,7 +16,7 @@ import {
   startHour,
 } from '../../components/admin/adminUtils.js'
 
-const REFRESH_MS = 60000
+const REFRESH_MS = 15000
 
 const hoursOf = (b) => Math.max(0, endHour(b.end_time) - startHour(b.start_time))
 
@@ -101,9 +101,15 @@ export default function AdminDashboard() {
       if (document.visibilityState === 'visible') load()
     }
     document.addEventListener('visibilitychange', onVisible)
+    window.addEventListener('focus', onVisible)
+    window.addEventListener('online', onVisible)
+    window.addEventListener('pageshow', onVisible)
     return () => {
       clearInterval(timer)
       document.removeEventListener('visibilitychange', onVisible)
+      window.removeEventListener('focus', onVisible)
+      window.removeEventListener('online', onVisible)
+      window.removeEventListener('pageshow', onVisible)
     }
   }, [load])
 

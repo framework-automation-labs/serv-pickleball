@@ -21,6 +21,16 @@ async function verify(req, res, next) {
 
   const { data: userData, error: userError } = await supabaseAdmin.auth.getUser(token)
   if (userError || !userData?.user) {
+    // Log WHY Supabase refused the token (e.g. session_not_found = revoked by a logout on
+    // another device, bad_jwt / jwt expired = stale token) — visible in the Render logs.
+    console.warn('[requireAdmin] getUser failed:', userError?.status, userError?.code, userError?.message)
+
+    // A network hiccup / Supabase 5xx / rate limit is NOT an invalid session — don't make
+    // the admin think they're logged out (and don't trigger a sign-out on the client).
+    const transient = userError && (userError.status === 0 || userError.status >= 500 || userError.status === 429)
+    if (transient) {
+      return res.status(503).json({ error: 'Could not reach the login service. Please try again in a moment.' })
+    }
     return res.status(401).json({ error: 'Invalid or expired session.' })
   }
 

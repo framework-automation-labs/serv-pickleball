@@ -4,12 +4,14 @@ import AdminLayout from '../../components/admin/AdminLayout.jsx'
 import CourtTimeline from '../../components/admin/CourtTimeline.jsx'
 import ReceiptViewerModal from '../../components/admin/ReceiptViewerModal.jsx'
 import RejectReasonModal from '../../components/admin/RejectReasonModal.jsx'
+import ConfirmModal from '../../components/admin/ConfirmModal.jsx'
 import RiskFlags from '../../components/admin/RiskFlags.jsx'
 import { rescheduleBooking, reviewBookingGroup } from '../../lib/api.js'
 import { supabase } from '../../lib/supabaseClient.js'
 import { formatDay, formatTime, groupByBookingGroup, hoursSince, localDateString } from '../../components/admin/adminUtils.js'
 
 const STATUS_FILTERS = ['all', 'pending', 'confirmed', 'cancelled', 'completed']
+const REFRESH_MS = 15000 // keep several admin devices close to in sync
 const PAGE_SIZE = 300 // rows (one row = one court/time block)
 
 const STATUS_STYLES = {
@@ -59,6 +61,7 @@ export default function ManageBookings() {
   const [updatingGroupId, setUpdatingGroupId] = useState(null)
   const [viewingReceiptPath, setViewingReceiptPath] = useState(null)
   const [rejectingGroupId, setRejectingGroupId] = useState(null)
+  const [deleting, setDeleting] = useState(null) // { groupId, receiptPath } awaiting confirmation
 
   // Court schedule view
   const [courtDate, setCourtDate] = useState(isDateParam(initialDate) ? initialDate : localDateString())
@@ -122,11 +125,17 @@ export default function ManageBookings() {
       if (view === 'courts') loadSchedule()
     }
 
-    const timer = setInterval(refreshVisibleBookings, 60000)
+    const timer = setInterval(refreshVisibleBookings, REFRESH_MS)
     document.addEventListener('visibilitychange', refreshVisibleBookings)
+    window.addEventListener('focus', refreshVisibleBookings) // tablets: tab/app switch
+    window.addEventListener('online', refreshVisibleBookings)
+    window.addEventListener('pageshow', refreshVisibleBookings) // iOS back/forward + resume
     return () => {
       clearInterval(timer)
       document.removeEventListener('visibilitychange', refreshVisibleBookings)
+      window.removeEventListener('focus', refreshVisibleBookings)
+      window.removeEventListener('online', refreshVisibleBookings)
+      window.removeEventListener('pageshow', refreshVisibleBookings)
     }
     // Refresh uses the current list filters and schedule date.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -143,6 +152,17 @@ export default function ManageBookings() {
   // through the backend (not a direct Supabase update) so it can also
   // email the customer — confirmed with the PDF attached, rejected
   // with the reason.
+  // Another admin (or device) may have already reviewed this booking — the server answers
+  // 409/404. That isn't a real failure: refresh so this list matches reality.
+  async function handleReviewError(err, verb) {
+    if (err.status === 409 || err.status === 404) {
+      setError('This booking was already handled (probably from another device). The list has been refreshed.')
+      await loadBookings({ silent: true })
+    } else {
+      setError(`Could not ${verb} booking: ${err.message}`)
+    }
+  }
+
   async function approveGroup(groupId) {
     setUpdatingGroupId(groupId)
     setError('')
@@ -150,7 +170,7 @@ export default function ManageBookings() {
       await reviewBookingGroup(groupId, 'approve')
       await loadBookings({ silent: true })
     } catch (err) {
-      setError(`Could not approve booking: ${err.message}`)
+      await handleReviewError(err, 'approve')
     }
     setUpdatingGroupId(null)
   }
@@ -162,7 +182,7 @@ export default function ManageBookings() {
       await reviewBookingGroup(groupId, 'reject', reason)
       await loadBookings({ silent: true })
     } catch (err) {
-      setError(`Could not reject booking: ${err.message}`)
+      await handleReviewError(err, 'reject')
     }
     setUpdatingGroupId(null)
     setRejectingGroupId(null)
@@ -193,8 +213,7 @@ export default function ManageBookings() {
   // should go through Approve/Reject first, so there's always a
   // record of what happened before a receipt disappears.
   async function deleteGroup(groupId, receiptPath) {
-    if (!window.confirm('Delete this booking permanently? This cannot be undone.')) return
-
+    setDeleting(null)
     setUpdatingGroupId(groupId)
     setError('')
 
@@ -460,7 +479,7 @@ export default function ManageBookings() {
                           )}
                           {!isPending && (
                             <button
-                              onClick={() => deleteGroup(groupId, first.receipt_path)}
+                              onClick={() => setDeleting({ groupId, receiptPath: first.receipt_path })}
                               disabled={busy}
                               className="rounded-lg border border-line px-3 py-1.5 text-xs font-medium text-ink/40 transition-colors hover:border-red-200 hover:bg-red-50 hover:text-red-600 disabled:opacity-50"
                             >
@@ -489,6 +508,17 @@ export default function ManageBookings() {
 
       {viewingReceiptPath && (
         <ReceiptViewerModal path={viewingReceiptPath} onClose={() => setViewingReceiptPath(null)} />
+      )}
+
+      {deleting && (
+        <ConfirmModal
+          title="Delete this booking?"
+          message="This permanently removes the booking and its receipt. It cannot be undone."
+          confirmLabel="Delete"
+          tone="danger"
+          onCancel={() => setDeleting(null)}
+          onConfirm={() => deleteGroup(deleting.groupId, deleting.receiptPath)}
+        />
       )}
 
       {rejectingGroupId && (

@@ -2,8 +2,8 @@ import { useEffect, useState } from 'react'
 import { supabase } from '../../lib/supabaseClient.js'
 
 // Number of bookings waiting for review, for the sidebar badges.
-// Refreshes every minute and whenever the tab becomes visible again.
-export default function usePendingCounts(intervalMs = 60000) {
+// Refreshes every 15 seconds and whenever the tab becomes visible again.
+export default function usePendingCounts(intervalMs = 15000) {
   const [counts, setCounts] = useState({ bookings: 0 })
 
   useEffect(() => {

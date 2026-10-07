@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import { AnimatePresence, motion } from 'motion/react'
 import ReceiptViewerModal from './ReceiptViewerModal.jsx'
 import RejectReasonModal from './RejectReasonModal.jsx'
+import ConfirmModal from './ConfirmModal.jsx'
 import RiskFlags from './RiskFlags.jsx'
 import { reviewBookingGroup } from '../../lib/api.js'
 import { formatDay, formatTime, groupByBookingGroup, hoursSince } from './adminUtils.js'
@@ -27,6 +28,7 @@ export default function NeedsAttention({ bookings, loading, onChanged }) {
   const [showAll, setShowAll] = useState(false)
   const [viewingReceiptPath, setViewingReceiptPath] = useState(null)
   const [rejectingGroupId, setRejectingGroupId] = useState(null)
+  const [approvingGroupId, setApprovingGroupId] = useState(null)
   const [updatingId, setUpdatingId] = useState(null)
   const [error, setError] = useState('')
 
@@ -42,15 +44,27 @@ export default function NeedsAttention({ bookings, loading, onChanged }) {
 
   const visible = showAll ? items : items.slice(0, COLLAPSED_COUNT)
 
+  // Another admin (or device) may have already reviewed this booking — that comes back as a
+  // 409/404. Not a real failure: just refresh so the list matches reality.
+  async function handleReviewError(err, verb) {
+    if (err.status === 409 || err.status === 404) {
+      setError('This booking was already handled (probably from another device). The list has been refreshed.')
+      await onChanged()
+    } else {
+      setError(`Could not ${verb} booking: ${err.message}`)
+    }
+  }
+
   async function approve(groupId) {
-    if (!window.confirm('Approve this booking? The customer will be emailed their confirmation.')) return
     setUpdatingId(groupId)
     setError('')
     try {
       await reviewBookingGroup(groupId, 'approve')
+      setApprovingGroupId(null)
       await onChanged()
     } catch (err) {
-      setError(`Could not approve booking: ${err.message}`)
+      setApprovingGroupId(null)
+      await handleReviewError(err, 'approve')
     }
     setUpdatingId(null)
   }
@@ -63,7 +77,8 @@ export default function NeedsAttention({ bookings, loading, onChanged }) {
       setRejectingGroupId(null)
       await onChanged()
     } catch (err) {
-      setError(`Could not reject booking: ${err.message}`)
+      setRejectingGroupId(null)
+      await handleReviewError(err, 'reject')
     }
     setUpdatingId(null)
   }
@@ -155,7 +170,7 @@ export default function NeedsAttention({ bookings, loading, onChanged }) {
                         </button>
                       )}
                       <button
-                        onClick={() => approve(groupId)}
+                        onClick={() => setApprovingGroupId(groupId)}
                         disabled={busy}
                         className="rounded-lg bg-spark px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-spark/90 disabled:opacity-50"
                       >
@@ -193,6 +208,17 @@ export default function NeedsAttention({ bookings, loading, onChanged }) {
       )}
 
       {viewingReceiptPath && <ReceiptViewerModal path={viewingReceiptPath} onClose={() => setViewingReceiptPath(null)} />}
+
+      {approvingGroupId && (
+        <ConfirmModal
+          title="Approve this booking?"
+          message="The customer will be emailed their confirmation."
+          confirmLabel="Approve"
+          busy={updatingId === approvingGroupId}
+          onCancel={() => setApprovingGroupId(null)}
+          onConfirm={() => approve(approvingGroupId)}
+        />
+      )}
 
       {rejectingGroupId && (
         <RejectReasonModal

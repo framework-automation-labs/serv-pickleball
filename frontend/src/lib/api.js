@@ -99,23 +99,64 @@ export async function fetchBookingStatus(groupId) {
 // Admin-only — approving/rejecting a receipt also sends the customer
 // an email, so these go through the backend (which verifies the
 // caller is really an admin) instead of a direct Supabase update.
+async function sendPatch(path, body, accessToken) {
+  // The backend (Render) can take a while to wake up, so allow a long timeout — but never
+  // hang forever, or the Approve button would stay disabled with no feedback.
+  const controller = new AbortController()
+  const timeout = setTimeout(() => controller.abort(), 60000)
+
+  let res
+  try {
+    res = await fetch(`${API_URL}${path}`, {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${accessToken}`,
+      },
+      body: JSON.stringify(body),
+      signal: controller.signal,
+    })
+  } catch (err) {
+    throw new Error(
+      err.name === 'AbortError'
+        ? 'The server took too long to respond. Please try again.'
+        : 'Could not reach the server. Check your connection and try again.',
+    )
+  } finally {
+    clearTimeout(timeout)
+  }
+
+  const data = await res.json().catch(() => ({}))
+  if (!res.ok) {
+    const error = new Error(data.error || 'Something went wrong.')
+    error.status = res.status // lets callers tell "already reviewed" (409) from real failures
+    throw error
+  }
+  return data
+}
+
 async function authedPatch(path, body) {
   const {
     data: { session },
   } = await supabase.auth.getSession()
   if (!session) throw new Error('Your admin session has expired — please log in again.')
 
-  const res = await fetch(`${API_URL}${path}`, {
-    method: 'PATCH',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${session.access_token}`,
-    },
-    body: JSON.stringify(body),
-  })
-  const data = await res.json().catch(() => ({}))
-  if (!res.ok) throw new Error(data.error || 'Something went wrong.')
-  return data
+  try {
+    return await sendPatch(path, body, session.access_token)
+  } catch (err) {
+    if (err.status !== 401) throw err
+  }
+
+  // 401: the cached token was rejected (expired while the tablet slept, wrong device clock,
+  // or the session was revoked). Get a fresh token and retry once.
+  const { data: refreshed, error: refreshError } = await supabase.auth.refreshSession()
+  if (refreshError || !refreshed?.session) {
+    // Truly dead session: clear it on THIS device so the admin is sent back to the login
+    // page instead of hitting the same error on every tap.
+    await supabase.auth.signOut({ scope: 'local' })
+    throw new Error('Your admin session has expired — please log in again.')
+  }
+  return sendPatch(path, body, refreshed.session.access_token)
 }
 
 // Moves one booked block to another court / date / start hour (admin only; the server
