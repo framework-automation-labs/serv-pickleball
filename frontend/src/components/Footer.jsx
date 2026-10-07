@@ -1,8 +1,8 @@
 import { Link } from 'react-router-dom'
 
 const logoUrl = `${import.meta.env.BASE_URL}serv-logo.png`
-const IG_URL = 'https://instagram.com/servpickleballclub'
-const FB_URL = 'https://facebook.com/servpickleballclub'
+const IG_URL = 'https://www.instagram.com/serv_club?utm_source=ig_web_button_share_sheet&stkn=ZDNlZDc0MzIxNw=='
+const FB_URL = 'https://www.facebook.com/share/1CG8LGk4y1/'
 const ADDRESS = 'K. Kangleon St., Mambajao, Maasin City, Southern Leyte, Philippines'
 const MAPS_URL = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(ADDRESS)}`
 
@@ -79,7 +79,7 @@ export default function Footer() {
         <div className="mx-auto flex max-w-7xl flex-col items-start justify-between gap-4 px-6 py-6 sm:flex-row sm:items-center sm:px-8 lg:px-12">
           <img src={logoUrl} alt="SERV Pickleball Club" className="h-9" />
           <p className="text-xs text-court-light/80">
-            Bookings can't be refunded or cancelled once confirmed. © {new Date().getFullYear()} SERV Pickleball Club.
+             © {new Date().getFullYear()} SERV Pickleball Club.
           </p>
         </div>
       </div>

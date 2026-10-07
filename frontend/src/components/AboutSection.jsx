@@ -98,7 +98,7 @@ export default function AboutSection() {
                 <span className="font-bold text-[#E8735C]">•</span> Open daily, 9:00 AM – 12:00 Midnight
               </li>
               <li className="flex gap-2">
-                <span className="font-bold text-[#E8735C]">•</span> Walk-ins welcome 1PM–12MN, subject to availability
+                <span className="font-bold text-[#E8735C]">•</span> Walk-ins welcome 9AM–12MN, subject to availability
               </li>
             </ul>
           </motion.div>

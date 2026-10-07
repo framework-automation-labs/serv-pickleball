@@ -185,7 +185,7 @@ export default function Confirmation() {
             href={`${API_URL}/api/bookings/${bookingId}/receipt.pdf`}
             className="inline-block w-full bg-spark text-white font-display font-semibold py-3.5 rounded-full hover:brightness-95 active:scale-[0.98] transition-all"
           >
-            Download Receipt (PDF)
+            Tap to See and Screenshot Receipt (PDF)
           </a>
         )}
 
