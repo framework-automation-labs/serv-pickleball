@@ -165,6 +165,11 @@ export function rescheduleBooking(bookingId, { courtId, date, startHour, sourceS
   return authedPatch(`/api/bookings/${bookingId}/reschedule`, { courtId, date, startHour, sourceStartHour })
 }
 
+// Frees one booked hour (admin only). Used by the Courts table.
+export function removeBookingHour(bookingId, sourceStartHour) {
+  return authedPatch(`/api/bookings/${bookingId}/remove-hour`, { sourceStartHour })
+}
+
 export function reviewBookingGroup(groupId, action, reason) {
   return authedPatch(`/api/bookings/${groupId}/review`, { action, reason })
 }

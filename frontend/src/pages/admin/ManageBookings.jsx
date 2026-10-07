@@ -6,7 +6,7 @@ import ReceiptViewerModal from '../../components/admin/ReceiptViewerModal.jsx'
 import RejectReasonModal from '../../components/admin/RejectReasonModal.jsx'
 import ConfirmModal from '../../components/admin/ConfirmModal.jsx'
 import RiskFlags from '../../components/admin/RiskFlags.jsx'
-import { rescheduleBooking, reviewBookingGroup } from '../../lib/api.js'
+import { removeBookingHour, rescheduleBooking, reviewBookingGroup } from '../../lib/api.js'
 import { supabase } from '../../lib/supabaseClient.js'
 import { formatDay, formatTime, groupByBookingGroup, hoursSince, localDateString } from '../../components/admin/adminUtils.js'
 
@@ -98,8 +98,10 @@ export default function ManageBookings() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [date, statusFilter, limit])
 
-  async function loadSchedule() {
-    setScheduleLoading(true)
+  // silent = background refresh: keep the grid on screen instead of flashing a skeleton
+  // (which would also wipe a half-finished tap on a cell).
+  async function loadSchedule({ silent = false } = {}) {
+    if (!silent) setScheduleLoading(true)
     setScheduleError('')
     const [courtsRes, bookingsRes, blockedRes] = await Promise.all([
       supabase.from('courts').select('id, name, rate_per_hour').eq('status', 'active').order('id'),
@@ -122,7 +124,7 @@ export default function ManageBookings() {
     function refreshVisibleBookings() {
       if (document.visibilityState !== 'visible') return
       loadBookings({ silent: true })
-      if (view === 'courts') loadSchedule()
+      if (view === 'courts') loadSchedule({ silent: true })
     }
 
     const timer = setInterval(refreshVisibleBookings, REFRESH_MS)
@@ -144,7 +146,13 @@ export default function ManageBookings() {
   // Moves one booked block (the server enforces the 6-hour rule), then refreshes both views.
   async function rescheduleBlock(booking, target) {
     await rescheduleBooking(booking.id, target)
-    await Promise.all([loadSchedule(), loadBookings({ silent: true })])
+    await Promise.all([loadSchedule({ silent: true }), loadBookings({ silent: true })])
+  }
+
+  // Frees one booked hour from the Courts table, then refreshes both views.
+  async function removeHour(booking, hour) {
+    await removeBookingHour(booking.id, hour)
+    await Promise.all([loadSchedule({ silent: true }), loadBookings({ silent: true })])
   }
 
   // Applies to every row sharing this booking_group_id — a receipt
@@ -310,6 +318,7 @@ export default function ManageBookings() {
             loading={scheduleLoading}
             onDateChange={setCourtDate}
             onReschedule={rescheduleBlock}
+            onRemoveHour={removeHour}
           />
         </>
       ) : (

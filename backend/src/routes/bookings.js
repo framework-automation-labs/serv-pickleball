@@ -637,4 +637,59 @@ router.patch(
   })
 )
 
+// PATCH /api/bookings/:bookingId/remove-hour  (admin only)
+//   body: { sourceStartHour }
+//
+// Frees ONE booked hour (e.g. a no-show or a mistake). A one-hour booking is deleted;
+// in a longer block the hour is cut out and the remaining pieces stay booked. Unlike
+// rescheduling there is no 6-hour rule — an admin can free a slot at any time. The
+// customer is NOT emailed automatically.
+router.patch(
+  '/:bookingId/remove-hour',
+  adminLimiter,
+  requireAdmin,
+  wrap(async (req, res) => {
+    const { bookingId } = req.params
+    if (!UUID_RE.test(bookingId)) return res.status(404).json({ error: 'Booking not found.' })
+
+    const { sourceStartHour } = req.body || {}
+    if (!Number.isInteger(sourceStartHour)) return res.status(400).json({ error: 'Choose the booking hour to remove.' })
+
+    const { data: booking, error: findError } = await supabaseAdmin
+      .from('bookings')
+      .select('id, start_time, end_time, booking_date, status')
+      .eq('id', bookingId)
+      .maybeSingle()
+    if (findError) {
+      console.error('[remove-hour] lookup failed:', findError)
+      return res.status(500).json({ error: 'Could not load this booking.' })
+    }
+    if (!booking) return res.status(404).json({ error: 'Booking not found. Refresh the schedule and try again.' })
+    if (booking.status === 'cancelled') return res.status(409).json({ error: 'This booking is already cancelled.' })
+
+    const { error: rpcError } = await supabaseAdmin.rpc('remove_booking_hour', {
+      p_booking_id: bookingId,
+      p_expected_date: booking.booking_date,
+      p_expected_start_time: booking.start_time,
+      p_expected_end_time: booking.end_time,
+      p_source_start_hour: sourceStartHour,
+    })
+
+    if (rpcError) {
+      if (rpcError.code === 'P0002') return res.status(404).json({ error: 'Booking not found. Refresh the schedule and try again.' })
+      if (rpcError.code === '40001') {
+        return res.status(409).json({ error: 'That booking hour has changed. Refresh the schedule and try again.' })
+      }
+      if (rpcError.code === '42883' || /remove_booking_hour/i.test(rpcError.message || '')) {
+        console.error('[remove-hour] migration 018 not applied?', rpcError)
+        return res.status(500).json({ error: 'Remove-hour is not set up yet (run database/018_remove_booking_hour.sql).' })
+      }
+      console.error('[remove-hour] failed:', rpcError)
+      return res.status(500).json({ error: 'Could not remove this time slot.' })
+    }
+
+    res.json({ ok: true })
+  })
+)
+
 export default router

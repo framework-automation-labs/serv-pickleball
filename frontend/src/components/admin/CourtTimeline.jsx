@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { motion } from 'motion/react'
+import ConfirmModal from './ConfirmModal.jsx'
 import { generateHourSlots, isHourPast } from '../../lib/api.js'
 import {
   RESCHEDULE_MIN_HOURS,
@@ -26,8 +27,11 @@ const hourLabel = (h) => formatTime(`${String(h % 24).padStart(2, '0')}:00:00`)
 // One day at a glance: one row per active court, one cell per opening hour.
 // Also hosts the reschedule flow:  Reschedule → pick a booked block → pick a free
 // start time (optionally on another date) → confirm.
-export default function CourtTimeline({ courts, bookings, blocked, date, loading, onDateChange, onReschedule }) {
+export default function CourtTimeline({ courts, bookings, blocked, date, loading, onDateChange, onReschedule, onRemoveHour }) {
   const [selectedId, setSelectedId] = useState(null)
+  const [selectedHour, setSelectedHour] = useState(null) // the hour cell tapped in the normal view
+  const [confirmRemove, setConfirmRemove] = useState(false)
+  const [removing, setRemoving] = useState(false)
   const [mode, setMode] = useState('off') // 'off' | 'pick' | 'place'
   const [moving, setMoving] = useState(null) // the booking row being moved
   const [sourceHour, setSourceHour] = useState(null)
@@ -74,6 +78,7 @@ export default function CourtTimeline({ courts, bookings, blocked, date, loading
     setNotice('')
     setError('')
     setSelectedId(null)
+    setSelectedHour(null)
     setTarget(null)
     setMoving(booking)
     setSourceHour(hour)
@@ -110,8 +115,28 @@ export default function CourtTimeline({ courts, bookings, blocked, date, loading
     setBusy(false)
   }
 
+  async function removeSelectedHour() {
+    if (!selected || selectedHour == null) return
+    setRemoving(true)
+    setError('')
+    setNotice('')
+    try {
+      await onRemoveHour(selected, selectedHour)
+      setNotice(
+        `Removed ${selected.courts?.name}, ${formatDay(date)}, ${hourLabel(selectedHour)} – ${hourLabel(selectedHour + 1)}. The slot is free again.`,
+      )
+      setSelectedId(null)
+      setSelectedHour(null)
+    } catch (err) {
+      setError(err.message || 'Could not remove this time slot.')
+    }
+    setRemoving(false)
+    setConfirmRemove(false)
+  }
+
   const selected = bookings.find((b) => b.id === selectedId) || null
-  const gridStyle = { gridTemplateColumns: `6.5rem repeat(${hours.length}, minmax(2.25rem, 1fr))` }
+  // Courts are columns, hours are rows — fits phones/tablets without sideways scrolling.
+  const gridStyle = { gridTemplateColumns: `3.25rem repeat(${courts.length}, minmax(0, 1fr))` }
   const eligibleCount = bookings.reduce((count, booking) => {
     for (let hour = startHour(booking.start_time); hour < endHour(booking.end_time); hour++) {
       if (canRescheduleHour(booking, hour)) count++
@@ -225,35 +250,33 @@ export default function CourtTimeline({ courts, bookings, blocked, date, loading
       ) : courts.length === 0 ? (
         <p className="py-8 text-center text-sm text-ink/50">No active courts to show.</p>
       ) : (
-        <div className="overflow-x-auto pb-1">
-          <div className="min-w-[720px] space-y-1.5">
+        <div className="pb-1">
+          <div className="space-y-1.5">
             <div className="grid items-end gap-1" style={gridStyle}>
               <span />
-              {hours.map((h) => (
-                <span
-                  key={h}
-                  className={`text-center text-[11px] font-medium ${h === nowHour ? 'text-spark' : 'text-ink/40'}`}
-                >
-                  {formatHourShort(h)}
-                  <span className={`mx-auto mt-0.5 block h-1 w-1 rounded-full ${h === nowHour ? 'bg-spark' : 'bg-transparent'}`} />
+              {courts.map((court) => (
+                <span key={court.id} className="px-0.5 text-center text-xs font-semibold leading-tight text-ink" title={court.name}>
+                  {court.name}
                 </span>
               ))}
             </div>
 
-            {courts.map((court, rowIndex) => (
+            {hours.map((h, rowIndex) => (
               <motion.div
-                key={court.id}
+                key={h}
                 className="grid items-center gap-1"
                 style={gridStyle}
                 initial={{ opacity: 0, y: 6 }}
                 animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.3, delay: rowIndex * 0.06, ease: [0.22, 1, 0.36, 1] }}
+                transition={{ duration: 0.25, delay: rowIndex * 0.02, ease: [0.22, 1, 0.36, 1] }}
               >
-                <span className="truncate pr-2 text-sm font-medium text-ink">{court.name}</span>
-                {hours.map((h) => {
+                <span className={`pr-1 text-right text-[11px] font-medium ${h === nowHour ? 'text-spark' : 'text-ink/40'}`}>
+                  {formatHourShort(h)}
+                </span>
+                {courts.map((court) => {
                   const cell = cellFor(court.id, h)
                   const label = `${court.name} ${formatHourShort(h)} ${cell.type}`
-                  const isSelected = cell.booking && cell.booking.id === selectedId
+                  const isSelected = cell.booking && cell.booking.id === selectedId && h === selectedHour
                   const baseCls = `h-9 rounded-md text-[11px] font-semibold ${CELL_STYLES[cell.type]}`
 
                   // ----- Step 1: pick a booked block -----
@@ -261,7 +284,7 @@ export default function CourtTimeline({ courts, bookings, blocked, date, loading
                     const ok = canRescheduleHour(cell.booking, h)
                     return ok ? (
                       <button
-                        key={h}
+                        key={court.id}
                         type="button"
                         onClick={() => {
                           setMoving(cell.booking)
@@ -276,7 +299,7 @@ export default function CourtTimeline({ courts, bookings, blocked, date, loading
                       </button>
                     ) : (
                       <div
-                        key={h}
+                        key={court.id}
                         className={`${baseCls} flex cursor-not-allowed items-center justify-center opacity-35`}
                         title={`Can't reschedule this hour — it starts in less than ${RESCHEDULE_MIN_HOURS} hours or is finished`}
                         aria-label={`${label}, can't be rescheduled`}
@@ -291,7 +314,7 @@ export default function CourtTimeline({ courts, bookings, blocked, date, loading
                     if (cell.booking && cell.booking.id === moving.id && h === sourceHour) {
                       return (
                         <div
-                          key={h}
+                          key={court.id}
                           className={`${baseCls} flex items-center justify-center outline-dashed outline-2 outline-offset-1 outline-spark`}
                           aria-label={`${label}, current slot`}
                         >
@@ -302,7 +325,7 @@ export default function CourtTimeline({ courts, bookings, blocked, date, loading
                     if (inTarget(court.id, h)) {
                       return (
                         <button
-                          key={h}
+                          key={court.id}
                           type="button"
                           onClick={() => setTarget(null)}
                           className="h-9 rounded-md border border-spark bg-spark text-[11px] font-semibold text-white"
@@ -315,7 +338,7 @@ export default function CourtTimeline({ courts, bookings, blocked, date, loading
                     if ((!cell.booking || (cell.booking.id === moving.id && h === sourceHour)) && isValidStart(court.id, h)) {
                       return (
                         <button
-                          key={h}
+                          key={court.id}
                           type="button"
                           onClick={() => setTarget({ courtId: court.id, startHour: h })}
                           className="h-9 rounded-md border border-emerald-400 bg-emerald-50 text-[13px] font-semibold text-emerald-700 ring-2 ring-emerald-300/70 transition-transform hover:scale-105 hover:bg-emerald-100"
@@ -326,7 +349,7 @@ export default function CourtTimeline({ courts, bookings, blocked, date, loading
                       )
                     }
                     return (
-                      <div key={h} className={`${baseCls} flex items-center justify-center opacity-45`} aria-label={label}>
+                      <div key={court.id} className={`${baseCls} flex items-center justify-center opacity-45`} aria-label={label}>
                         {cell.booking ? (cell.booking.guest_name || '?').slice(0, 1).toUpperCase() : ''}
                       </div>
                     )
@@ -335,13 +358,17 @@ export default function CourtTimeline({ courts, bookings, blocked, date, loading
                   // ----- Normal view -----
                   const cls = `${baseCls} ${isSelected ? 'ring-2 ring-spark ring-offset-1' : ''}`
                   if (!cell.booking) {
-                    return <div key={h} className={cls} aria-label={label} />
+                    return <div key={court.id} className={cls} aria-label={label} />
                   }
                   return (
                     <button
-                      key={h}
+                      key={court.id}
                       type="button"
-                      onClick={() => setSelectedId(isSelected ? null : cell.booking.id)}
+                      onClick={() => {
+                        setError('')
+                        setSelectedId(isSelected ? null : cell.booking.id)
+                        setSelectedHour(isSelected ? null : h)
+                      }}
                       className={`${cls} transition-transform hover:scale-105`}
                       aria-label={`${label}, ${cell.booking.guest_name || 'guest'}`}
                     >
@@ -426,6 +453,16 @@ export default function CourtTimeline({ courts, bookings, blocked, date, loading
               {selected.reference_code ? ` · Ref ${selected.reference_code}` : ''}
             </p>
           </div>
+          <div className="flex flex-wrap items-center gap-2">
+          {onRemoveHour && selectedHour != null && (
+            <button
+              type="button"
+              onClick={() => setConfirmRemove(true)}
+              className="rounded-lg border border-red-200 bg-white px-3 py-1.5 text-xs font-medium text-red-600 hover:bg-red-50"
+            >
+              Remove this time slot
+            </button>
+          )}
           {onReschedule &&
             (hasReschedulableHour(selected) ? (
               <button
@@ -440,7 +477,22 @@ export default function CourtTimeline({ courts, bookings, blocked, date, loading
                 Can't be rescheduled (needs {RESCHEDULE_MIN_HOURS}+ hours before start)
               </span>
             ))}
+          </div>
         </motion.div>
+      )}
+
+      {mode === 'off' && error && <p className="mt-4 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-600">{error}</p>}
+
+      {confirmRemove && selected && selectedHour != null && (
+        <ConfirmModal
+          title="Remove this time slot?"
+          message={`${selected.courts?.name}, ${formatDay(date)}, ${hourLabel(selectedHour)} – ${hourLabel(selectedHour + 1)} (${selected.guest_name || 'guest'}) will be freed and can be booked again. The customer is not emailed automatically, and any refund is handled by you.`}
+          confirmLabel="Remove slot"
+          tone="danger"
+          busy={removing}
+          onCancel={() => setConfirmRemove(false)}
+          onConfirm={removeSelectedHour}
+        />
       )}
     </section>
   )
