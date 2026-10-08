@@ -1,42 +1,58 @@
-import nodemailer from 'nodemailer'
+const API_URL = 'https://api.brevo.com/v3/smtp/email'
 
-let transporter
-let attempted = false
-
-function getTransporter() {
-  if (attempted) return transporter
-  attempted = true
-
-  const { SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS } = process.env
-  if (!SMTP_HOST || !SMTP_USER || !SMTP_PASS) {
-    console.warn('[mailer] SMTP_HOST/SMTP_USER/SMTP_PASS not set — emails will be skipped, not sent.')
-    transporter = null
-    return null
-  }
-
-  transporter = nodemailer.createTransport({
-    host: SMTP_HOST,
-    port: Number(SMTP_PORT) || 587,
-    secure: Number(SMTP_PORT) === 465,
-    auth: { user: SMTP_USER, pass: SMTP_PASS },
-  })
-  return transporter
+function toBrevoAttachments(attachments = []) {
+  return attachments
+    .map((a) => {
+      const name = a.filename || a.name || 'attachment'
+      if (a.content) {
+        const buf = Buffer.isBuffer(a.content)
+          ? a.content
+          : Buffer.from(a.content, a.encoding === 'base64' ? 'base64' : 'utf8')
+        return { name, content: buf.toString('base64') }
+      }
+      if (a.path && /^https?:\/\//.test(a.path)) {
+        return { name, url: a.path }
+      }
+      return null
+    })
+    .filter(Boolean)
 }
 
-const MAIL_FROM = process.env.MAIL_FROM || '"SERV Pickleball Club" <no-reply@example.com>'
-
 /**
- * Sends an email. Deliberately fail-quiet: a broken SMTP config or a
- * missing address should never break a booking/review —
- * email here is a courtesy notification, not the source of truth.
+ * Sends an email via Brevo's HTTP API. Deliberately fail-quiet:
+ * email is a courtesy notification, not the source of truth.
  */
 export async function sendMail({ to, subject, html, attachments }) {
   if (!to) return
-  const t = getTransporter()
-  if (!t) return
+
+  const { BREVO_API_KEY, MAIL_FROM_EMAIL, MAIL_FROM_NAME } = process.env
+  if (!BREVO_API_KEY || !MAIL_FROM_EMAIL) {
+    console.warn('[mailer] BREVO_API_KEY/MAIL_FROM_EMAIL not set — emails will be skipped.')
+    return
+  }
+
+  const body = {
+    sender: { name: MAIL_FROM_NAME || 'SERV Pickleball Club', email: MAIL_FROM_EMAIL },
+    to: [{ email: to }],
+    subject,
+    htmlContent: html,
+  }
+  const files = toBrevoAttachments(attachments)
+  if (files.length) body.attachment = files
 
   try {
-    await t.sendMail({ from: MAIL_FROM, to, subject, html, attachments })
+    const res = await fetch(API_URL, {
+      method: 'POST',
+      headers: {
+        'api-key': BREVO_API_KEY,
+        'content-type': 'application/json',
+        accept: 'application/json',
+      },
+      body: JSON.stringify(body),
+    })
+    if (!res.ok) {
+      throw new Error(`Brevo ${res.status}: ${await res.text()}`)
+    }
   } catch (err) {
     console.error(`[mailer] failed to send "${subject}" to ${to}:`, err.message)
   }
