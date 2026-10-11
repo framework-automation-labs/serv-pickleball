@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { motion } from 'motion/react'
 import ConfirmModal from './ConfirmModal.jsx'
-import { generateHourSlots, isHourPast } from '../../lib/api.js'
+import { generateHourSlots, isHourPassed } from '../../lib/api.js'
 import {
   RESCHEDULE_MIN_HOURS,
   canRescheduleHour,
@@ -9,6 +9,8 @@ import {
   formatDay,
   formatHourShort,
   formatTime,
+  isInsidePolicyWindow,
+  isWalkIn,
   localDateString,
   startHour,
 } from './adminUtils.js'
@@ -17,8 +19,11 @@ const CELL_STYLES = {
   free: 'bg-mist border border-line/70',
   pending: 'bg-amber-100 border border-amber-300 text-amber-700',
   confirmed: 'bg-court border border-court text-white',
-  blocked: 'bg-line/80 border border-line',
+  // Dark on purpose: unavailable time (blocked by an admin, or already passed) should stand out
+  // clearly from free (light) and booked (colored) cells.
+  blocked: 'bg-slate-600 border border-slate-700 dark:bg-slate-950 dark:border-slate-600',
 }
+CELL_STYLES.passed = CELL_STYLES.blocked
 
 const STATUS_LABELS = { pending: 'Pending', confirmed: 'Confirmed', completed: 'Completed' }
 
@@ -27,7 +32,7 @@ const hourLabel = (h) => formatTime(`${String(h % 24).padStart(2, '0')}:00:00`)
 // One day at a glance: one row per active court, one cell per opening hour.
 // Also hosts the reschedule flow:  Reschedule → pick a booked block → pick a free
 // start time (optionally on another date) → confirm.
-export default function CourtTimeline({ courts, bookings, blocked, date, loading, onDateChange, onReschedule, onRemoveHour }) {
+export default function CourtTimeline({ courts, bookings, blocked, date, loading, onDateChange, onReschedule, onRemoveHour, onWalkIn }) {
   const [selectedId, setSelectedId] = useState(null)
   const [selectedHour, setSelectedHour] = useState(null) // the hour cell tapped in the normal view
   const [confirmRemove, setConfirmRemove] = useState(false)
@@ -54,7 +59,8 @@ export default function CourtTimeline({ courts, bookings, blocked, date, loading
     const isBlocked = blocked.some(
       (b) => b.court_id === courtId && hour >= startHour(b.start_time) && hour < endHour(b.end_time),
     )
-    return { type: isBlocked ? 'blocked' : 'free' }
+    if (isBlocked) return { type: 'blocked' }
+    return { type: isHourPassed(date, hour) ? 'passed' : 'free' }
   }
 
   // Can the selected hour move to `hour` on this court (on the date being shown)?
@@ -63,7 +69,7 @@ export default function CourtTimeline({ courts, bookings, blocked, date, loading
     if (!moving || hour + duration > 24) return false
     if (courtId === moving.court_id && date === moving.booking_date && hour === sourceHour) return false
     for (let h = hour; h < hour + duration; h++) {
-      if (isHourPast(date, h)) return false
+      if (isHourPassed(date, h)) return false
       const cell = cellFor(courtId, h)
       if (cell.type === 'blocked') return false
       if (cell.booking && !(cell.booking.id === moving.id && h === sourceHour)) return false
@@ -161,7 +167,7 @@ export default function CourtTimeline({ courts, bookings, blocked, date, loading
         <div>
           <h2 className="font-display text-lg text-ink">{isToday ? "Today's courts" : 'Court schedule'}</h2>
           <p className="text-xs text-ink/50">
-            {formatDay(date)} · {rescheduling ? 'rescheduling' : 'tap a booked hour for details'}
+            {formatDay(date)} · {rescheduling ? 'rescheduling' : 'tap a booked hour for details, or a free hour to add a walk-in'}
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
@@ -170,7 +176,7 @@ export default function CourtTimeline({ courts, bookings, blocked, date, loading
               ['free', 'Free'],
               ['pending', 'Pending'],
               ['confirmed', 'Confirmed'],
-              ['blocked', 'Blocked'],
+              ['blocked', 'Blocked / passed'],
             ].map(([type, label]) => (
               <li key={type} className="flex items-center gap-1.5">
                 <span className={`h-3 w-3 rounded ${CELL_STYLES[type]}`} />
@@ -178,6 +184,15 @@ export default function CourtTimeline({ courts, bookings, blocked, date, loading
               </li>
             ))}
           </ul>
+          {onWalkIn && !rescheduling && (
+            <button
+              type="button"
+              onClick={() => onWalkIn({ courtId: courts[0]?.id, date, startHour: null })}
+              className="rounded-lg border border-court px-3.5 py-1.5 text-sm font-medium text-court transition-colors hover:bg-court/5"
+            >
+              + Walk-in booking
+            </button>
+          )}
           {onReschedule && (
             <button
               type="button"
@@ -202,8 +217,8 @@ export default function CourtTimeline({ courts, bookings, blocked, date, loading
         <div className="mb-4 rounded-xl border border-spark/30 bg-spark/5 px-4 py-3 text-sm text-ink/80">
           <p className="font-medium text-ink">Step 1 · Pick the booked time slot to move</p>
           <p className="text-xs text-ink/60">
-            Highlighted slots can be rescheduled. Bookings starting in less than {RESCHEDULE_MIN_HOURS} hours (or
-            already finished) can't be moved.
+            Highlighted slots can be moved at any time, even right before they start. Only hours that have already
+            finished can't be moved.
             {eligibleCount === 0 && !loading && ' None on this date can be moved.'}
           </p>
         </div>
@@ -218,7 +233,8 @@ export default function CourtTimeline({ courts, bookings, blocked, date, loading
             {hourLabel(sourceHour + 1)} (1h)
           </p>
           <p className="mt-0.5 text-xs text-ink/50">
-            Tap a highlighted green start time — one free hour is required.
+            Tap a highlighted green start time — one free hour is required. Only finished and blocked times are
+            unavailable.
           </p>
           <div className="mt-3 flex flex-wrap items-end gap-3">
             <div>
@@ -301,7 +317,7 @@ export default function CourtTimeline({ courts, bookings, blocked, date, loading
                       <div
                         key={court.id}
                         className={`${baseCls} flex cursor-not-allowed items-center justify-center opacity-35`}
-                        title={`Can't reschedule this hour — it starts in less than ${RESCHEDULE_MIN_HOURS} hours or is finished`}
+                        title="Can't reschedule this hour — it has already finished"
                         aria-label={`${label}, can't be rescheduled`}
                       >
                         {(cell.booking.guest_name || '?').slice(0, 1).toUpperCase()}
@@ -348,8 +364,13 @@ export default function CourtTimeline({ courts, bookings, blocked, date, loading
                         </button>
                       )
                     }
+                    const unavailable = cell.type === 'blocked' || cell.type === 'passed'
                     return (
-                      <div key={court.id} className={`${baseCls} flex items-center justify-center opacity-45`} aria-label={label}>
+                      <div
+                        key={court.id}
+                        className={`${baseCls} flex items-center justify-center ${unavailable ? '' : 'opacity-45'}`}
+                        aria-label={label}
+                      >
                         {cell.booking ? (cell.booking.guest_name || '?').slice(0, 1).toUpperCase() : ''}
                       </div>
                     )
@@ -358,6 +379,20 @@ export default function CourtTimeline({ courts, bookings, blocked, date, loading
                   // ----- Normal view -----
                   const cls = `${baseCls} ${isSelected ? 'ring-2 ring-spark ring-offset-1' : ''}`
                   if (!cell.booking) {
+                    if (mode === 'off' && cell.type === 'free' && onWalkIn) {
+                      return (
+                        <button
+                          key={court.id}
+                          type="button"
+                          onClick={() => onWalkIn({ courtId: court.id, date, startHour: h })}
+                          className={`${cls} text-ink/0 transition-colors hover:border-court hover:bg-court/10 hover:text-court focus-visible:text-court`}
+                          aria-label={`${label} — tap to add a walk-in booking`}
+                          title="Add a walk-in booking"
+                        >
+                          +
+                        </button>
+                      )
+                    }
                     return <div key={court.id} className={cls} aria-label={label} />
                   }
                   return (
@@ -407,6 +442,12 @@ export default function CourtTimeline({ courts, bookings, blocked, date, loading
               amount the customer already paid stays the same.
             </p>
           )}
+          {isInsidePolicyWindow(moving, sourceHour) && (
+            <p className="mt-1 text-xs text-amber-700">
+              This is inside the {RESCHEDULE_MIN_HOURS}-hour reschedule policy, so you are moving it as an admin
+              override.
+            </p>
+          )}
           {moving.guest_email && <p className="mt-1 text-xs text-ink/50">The customer will be emailed about the change.</p>}
           {error && <p className="mt-2 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-600">{error}</p>}
           <div className="mt-3 flex flex-wrap gap-2">
@@ -450,6 +491,7 @@ export default function CourtTimeline({ courts, bookings, blocked, date, loading
             <p className="text-ink/70">
               {selected.courts?.name}: {formatTime(selected.start_time)} – {formatTime(selected.end_time)} ·{' '}
               {STATUS_LABELS[selected.status] || selected.status}
+              {isWalkIn(selected) ? ' · Walk-in' : ''}
               {selected.reference_code ? ` · Ref ${selected.reference_code}` : ''}
             </p>
           </div>
@@ -473,9 +515,7 @@ export default function CourtTimeline({ courts, bookings, blocked, date, loading
                 Choose an hour to reschedule
               </button>
             ) : (
-              <span className="text-xs text-ink/40">
-                Can't be rescheduled (needs {RESCHEDULE_MIN_HOURS}+ hours before start)
-              </span>
+              <span className="text-xs text-ink/40">Can't be rescheduled (this time has already finished)</span>
             ))}
           </div>
         </motion.div>

@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../../lib/supabaseClient.js'
 
-export default function ReceiptViewerModal({ path, onClose }) {
+export default function ReceiptViewerModal({ path, title = 'GCash Receipt', onClose }) {
   const [url, setUrl] = useState(null)
   const [error, setError] = useState('')
 
@@ -28,14 +28,14 @@ export default function ReceiptViewerModal({ path, onClose }) {
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex justify-between items-center mb-3">
-          <h3 className="font-display font-semibold text-ink">GCash Receipt</h3>
+          <h3 className="font-display font-semibold text-ink">{title}</h3>
           <button onClick={onClose} className="text-ink/40 hover:text-ink text-sm">
             Close
           </button>
         </div>
         {error && <p className="text-red-600 text-sm">{error}</p>}
         {!error && !url && <p className="text-ink/40 text-sm">Loading…</p>}
-        {url && <img src={url} alt="GCash receipt" className="w-full rounded-lg border border-line" />}
+        {url && <img src={url} alt={title} className="w-full rounded-lg border border-line" />}
       </div>
     </div>
   )

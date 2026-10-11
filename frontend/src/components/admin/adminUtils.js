@@ -60,7 +60,10 @@ export function groupByBookingGroup(bookings) {
   return [...groups.values()]
 }
 
-// Reschedule policy: only while the booking's current start is at least this far away.
+// Customer-facing reschedule POLICY (shown to players): a booking can be moved up to 6 hours
+// before it starts. Admins are NOT blocked by it any more — staff can move someone on the spot
+// (e.g. switch courts mid-session). The constant stays so the policy is still visible in the
+// admin screens (see isInsidePolicyWindow).
 export const RESCHEDULE_MIN_HOURS = 6
 
 // The club runs on Philippine time (UTC+8), so build the real instant from that.
@@ -68,14 +71,28 @@ export function bookingStartMs(booking) {
   return new Date(`${booking.booking_date}T${booking.start_time.slice(0, 8)}+08:00`).getTime()
 }
 
+function hourStartMs(booking, hour) {
+  return bookingStartMs(booking) + (hour - startHour(booking.start_time)) * 60 * 60 * 1000
+}
+
+// An admin can move any pending/confirmed hour that has not finished yet (including the hour
+// currently in progress), however close it is.
 export function canRescheduleHour(booking, hour, now = Date.now()) {
-  const hourStart = bookingStartMs(booking) + (hour - startHour(booking.start_time)) * 60 * 60 * 1000
-  return (
-    ['pending', 'confirmed'].includes(booking.status) &&
-    hourStart - now >= RESCHEDULE_MIN_HOURS * 60 * 60 * 1000
-  )
+  return ['pending', 'confirmed'].includes(booking.status) && hourStartMs(booking, hour) + 60 * 60 * 1000 > now
 }
 
 export function canReschedule(booking, now = Date.now()) {
   return canRescheduleHour(booking, startHour(booking.start_time), now)
 }
+
+// True when moving this hour is closer than the customer policy allows (an admin override).
+export function isInsidePolicyWindow(booking, hour, now = Date.now()) {
+  return hourStartMs(booking, hour) - now < RESCHEDULE_MIN_HOURS * 60 * 60 * 1000
+}
+
+// Walk-ins are entered by an admin: reference code WALK-XXXXXXXX (older ones have no receipt at all).
+export function isWalkIn(booking) {
+  return String(booking.reference_code || '').startsWith('WALK-') || !booking.receipt_path
+}
+
+export const PAYMENT_METHOD_LABELS = { cash: 'Cash', gcash: 'GCash', other: 'Other' }

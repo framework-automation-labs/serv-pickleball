@@ -8,6 +8,8 @@ import { buildReceiptPdf, streamReceiptPdf } from '../lib/receiptPdf.js'
 import { requireAdmin } from '../middleware/requireAdmin.js'
 import { submissionLimiter, pdfLimiter, adminLimiter } from '../middleware/rateLimiter.js'
 import { sendMail } from '../lib/mailer.js'
+import ExcelJS from 'exceljs'
+import { WALK_IN_PREFIX, WALK_IN_METHODS, isWalkIn, paymentMethodLabel } from '../lib/bookingMeta.js'
 import { receivedEmail, confirmedEmail, rejectedEmail, rescheduledEmail, adminNewReceiptAlert } from '../lib/emailTemplates.js'
 
 const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:5173'
@@ -20,8 +22,11 @@ const OPEN_HOUR = 9
 const CLOSE_HOUR = 24
 const MAX_SLOTS_PER_SUBMISSION = 6
 const MAX_ADVANCE_DAYS = 90
-// Reschedule policy: a booking can only be moved while its start is at least this far away.
-const RESCHEDULE_MIN_HOURS = 6
+// Customer-facing reschedule POLICY (shown on the booking pages): a booking can be moved up to
+// this many hours before it starts. The admin tools deliberately do NOT enforce it any more, so
+// staff can move someone on the spot (e.g. switch courts mid-session). It is kept here only so
+// admin overrides can be logged.
+const RESCHEDULE_POLICY_HOURS = 6
 // Without a payment gateway a pending receipt holds a slot until an
 // admin reviews it — cap how many unreviewed submissions one phone
 // number can have open at once so a single person can't lock the calendar.
@@ -514,11 +519,12 @@ const hourLabel = (h) => `${h % 12 === 0 ? 12 : h % 12}:00 ${h % 24 >= 12 ? 'PM'
 const endHourOf = (t) => (parseInt(t, 10) === 0 ? 24 : parseInt(t, 10))
 
 // PATCH /api/bookings/:bookingId/reschedule  (admin only)
-//   body: { courtId, date: 'YYYY-MM-DD', startHour }
+//   body: { courtId, date: 'YYYY-MM-DD', startHour, sourceStartHour }
 //
 // Moves one hour from a booking block. Any unselected hours remain booked in place.
-// Only pending/confirmed hours at least 6 hours away may be moved, and destination
-// overlaps are refused by the database exclusion constraint / blocked-slot trigger.
+// Admins can move an hour at any time: the 6-hour customer policy is NOT enforced here. The only
+// things that stop a move are an hour that has already finished (source or destination) and
+// destination overlaps, which the database refuses (exclusion constraint / blocked-slot trigger).
 router.patch(
   '/:bookingId/reschedule',
   adminLimiter,
@@ -554,12 +560,15 @@ router.patch(
       return res.status(409).json({ error: 'That booking hour has changed. Refresh the schedule and try again.' })
     }
 
-    // The six-hour policy applies to the selected hour, not earlier hours in the same block.
-    const originalStart = new Date(`${booking.booking_date}T${toTime(sourceStartHour)}+08:00`).getTime()
-    if (originalStart - Date.now() < RESCHEDULE_MIN_HOURS * 60 * 60 * 1000) {
-      return res.status(409).json({
-        error: `Rescheduling is only available up to ${RESCHEDULE_MIN_HOURS} hours before the reservation.`,
-      })
+    // An hour that has already finished can't be moved. Anything still ahead or in progress can,
+    // however close it is: the 6-hour policy is not enforced for admins.
+    const sourceStartMs = new Date(`${booking.booking_date}T${toTime(sourceStartHour)}+08:00`).getTime()
+    const msUntilSource = sourceStartMs - Date.now()
+    if (msUntilSource + 60 * 60 * 1000 <= 0) {
+      return res.status(409).json({ error: 'That time slot has already passed, so it can\u2019t be moved.' })
+    }
+    if (msUntilSource < RESCHEDULE_POLICY_HOURS * 60 * 60 * 1000) {
+      console.info(`[reschedule] admin ${req.adminUserId} moved booking ${bookingId} inside the ${RESCHEDULE_POLICY_HOURS}h policy window`)
     }
 
     const newEndHour = startHour + 1
@@ -567,8 +576,9 @@ router.patch(
       return res.status(400).json({ error: 'The new time must be between 9:00 AM and 12:00 midnight.' })
     }
 
+    // The hour currently in progress is still open to admins; only hours that finished are closed.
     const { today, hour: nowHour } = manilaNow()
-    if (date < today || (date === today && startHour <= nowHour)) {
+    if (date < today || (date === today && startHour < nowHour)) {
       return res.status(400).json({ error: 'You can\u2019t move a booking to a time that has already passed.' })
     }
     if (date > addDays(today, MAX_ADVANCE_DAYS)) {
@@ -689,6 +699,322 @@ router.patch(
     }
 
     res.json({ ok: true })
+  })
+)
+
+// POST /api/bookings/walk-in  (admin only, multipart/form-data)
+//   payload: JSON string — { guestName, phone?, courtId, date, startHour, hours, paymentMethod, amount? }
+//   photo:   image file — photo of the cash or of the online payment receipt
+//
+// For people paying at the courts (a new walk-in, or a player who is already playing and wants
+// more time). The booking is saved already confirmed + paid, since the admin collected the
+// payment in person; nothing is emailed. The same overlap protection as online bookings applies
+// (database exclusion constraint + blocked-slot trigger), so a taken slot is refused.
+router.post(
+  '/walk-in',
+  adminLimiter,
+  requireAdmin,
+  upload.single('photo'),
+  wrap(async (req, res) => {
+    if (!req.file) {
+      return res.status(400).json({ error: 'Please attach a photo of the cash or the payment receipt.' })
+    }
+
+    let payload
+    try {
+      payload = JSON.parse(req.body.payload || '{}')
+    } catch {
+      return res.status(400).json({ error: 'Invalid booking details.' })
+    }
+    if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
+      return res.status(400).json({ error: 'Invalid booking details.' })
+    }
+
+    const { guestName, phone, date, startHour, hours, paymentMethod } = payload
+    const courtId = Number(payload.courtId)
+
+    if (typeof guestName !== 'string' || !guestName.trim() || guestName.trim().length > 100) {
+      return res.status(400).json({ error: 'Please enter the player’s name (max 100 characters).' })
+    }
+    const cleanPhone = typeof phone === 'string' ? phone.trim() : ''
+    if (cleanPhone && !PHONE_RE.test(cleanPhone)) {
+      return res.status(400).json({ error: 'That phone number does not look right. Leave it blank if you don’t have one.' })
+    }
+    if (!Number.isInteger(courtId) || courtId <= 0) return res.status(400).json({ error: 'Choose a valid court.' })
+    if (!isRealDate(date)) return res.status(400).json({ error: 'Choose a valid date.' })
+    if (!Number.isInteger(startHour) || !Number.isInteger(hours) || hours < 1 || hours > MAX_SLOTS_PER_SUBMISSION) {
+      return res.status(400).json({ error: `Choose a start time and 1 to ${MAX_SLOTS_PER_SUBMISSION} hours.` })
+    }
+    const endHour = startHour + hours
+    if (startHour < OPEN_HOUR || endHour > CLOSE_HOUR) {
+      return res.status(400).json({ error: 'Bookings must be between 9:00 AM and 12:00 midnight.' })
+    }
+    if (!WALK_IN_METHODS.includes(paymentMethod)) {
+      return res.status(400).json({ error: 'Choose how the player paid (cash, GCash or other).' })
+    }
+
+    // Same rule as rescheduling: the hour in progress is still bookable, finished hours are not.
+    const { today, hour: nowHour } = manilaNow()
+    if (date < today || (date === today && startHour < nowHour)) {
+      return res.status(400).json({ error: 'You can’t book a time that has already passed.' })
+    }
+    if (date > addDays(today, MAX_ADVANCE_DAYS)) {
+      return res.status(400).json({ error: `Bookings can only be made up to ${MAX_ADVANCE_DAYS} days ahead.` })
+    }
+
+    const { hash, meta } = await analyzeReceipt(req.file.buffer)
+    const format = meta && IMAGE_FORMATS[meta.format]
+    if (!format) return res.status(400).json({ error: 'The photo must be a JPG, PNG, WebP, or GIF image.' })
+    if (meta.width * meta.height > MAX_INPUT_PIXELS) {
+      return res.status(400).json({ error: 'That image is too large. Please use a normal phone photo.' })
+    }
+
+    const { data: court, error: courtError } = await supabaseAdmin
+      .from('courts')
+      .select('id, rate_per_hour')
+      .eq('id', courtId)
+      .eq('status', 'active')
+      .maybeSingle()
+    if (courtError) {
+      console.error('[walk-in] court lookup failed:', courtError)
+      return res.status(500).json({ error: 'Could not save this booking. Please try again.' })
+    }
+    if (!court) return res.status(400).json({ error: 'That court is not available.' })
+
+    // Default price = the court's rate; the admin may type what was actually collected.
+    const expected = hours * (Number(court.rate_per_hour) || RATE_PER_HOUR)
+    let amount = expected
+    if (payload.amount != null && payload.amount !== '') {
+      amount = Math.round(Number(payload.amount) * 100) / 100
+      if (!Number.isFinite(amount) || amount < 0 || amount > 100000) {
+        return res.status(400).json({ error: 'Enter a valid amount.' })
+      }
+    }
+
+    const groupId = randomUUID()
+    const referenceCode = generateReferenceCode(WALK_IN_PREFIX)
+    const photoPath = `${groupId}.${format.ext}`
+
+    const { error: uploadError } = await supabaseAdmin.storage
+      .from('receipts')
+      .upload(photoPath, req.file.buffer, { contentType: format.type })
+    if (uploadError) {
+      console.error('[walk-in] photo upload failed:', uploadError)
+      return res.status(500).json({ error: 'Could not save the photo. Please try again.' })
+    }
+
+    const { error: insertError } = await supabaseAdmin.from('bookings').insert({
+      court_id: courtId,
+      guest_name: guestName.trim(),
+      guest_phone: cleanPhone, // the table requires a value; '' = none given
+      guest_email: null,
+      booking_date: date,
+      start_time: toTime(startHour),
+      end_time: toTime(endHour),
+      status: 'confirmed',
+      payment_status: 'paid',
+      amount,
+      booking_group_id: groupId,
+      receipt_path: photoPath,
+      receipt_hash: hash,
+      risk_flags: [],
+      reference_code: referenceCode,
+      payment_reference: paymentMethod,
+    })
+
+    if (insertError) {
+      await supabaseAdmin.storage.from('receipts').remove([photoPath])
+      if (insertError.code === '23P01') {
+        return res.status(409).json({ error: 'That time is already booked on this court. Pick another time or court.' })
+      }
+      if (/blocked/i.test(insertError.message || '')) {
+        return res.status(409).json({ error: 'That time slot is blocked and unavailable.' })
+      }
+      console.error('[walk-in] insert failed:', insertError)
+      return res.status(500).json({ error: 'Could not save this booking. Please try again.' })
+    }
+
+    res.status(201).json({ bookingGroupId: groupId, referenceCode })
+  })
+)
+
+// GET /api/bookings/export.xlsx?from=YYYY-MM-DD&to=YYYY-MM-DD  (admin only)
+//
+// Excel copy of the bookings for one day (to defaults to from) or a date range. One row per
+// court/time block, all statuses included, plus a Summary sheet. Revenue only counts confirmed
+// or completed bookings that are marked paid.
+const MAX_EXPORT_DAYS = 366
+
+router.get(
+  '/export.xlsx',
+  adminLimiter,
+  requireAdmin,
+  wrap(async (req, res) => {
+    const from = req.query.from
+    const to = req.query.to || from
+    if (!isRealDate(from) || !isRealDate(to)) {
+      return res.status(400).json({ error: 'Choose a valid date to export.' })
+    }
+    if (to < from) return res.status(400).json({ error: 'The end date can’t be before the start date.' })
+    if (addDays(from, MAX_EXPORT_DAYS) < to) {
+      return res.status(400).json({ error: `Export up to ${MAX_EXPORT_DAYS} days at a time.` })
+    }
+
+    // Supabase returns at most 1000 rows per request, so page through.
+    const rows = []
+    for (let offset = 0; ; offset += 1000) {
+      const { data, error } = await supabaseAdmin
+        .from('bookings')
+        .select('*, courts(name)')
+        .gte('booking_date', from)
+        .lte('booking_date', to)
+        .order('booking_date')
+        .order('start_time')
+        .order('court_id')
+        .range(offset, offset + 999)
+      if (error) {
+        console.error('[export] query failed:', error)
+        return res.status(500).json({ error: 'Could not load bookings for the export.' })
+      }
+      rows.push(...data)
+      if (data.length < 1000) break
+    }
+
+    const hoursOf = (b) => Math.max(0, endHourOf(b.end_time) - parseInt(b.start_time, 10))
+    const startLabel = (t) => hourLabel(parseInt(t, 10))
+    const endLabel = (t) => hourLabel(endHourOf(t))
+    const bookedOn = (iso) =>
+      new Date(iso).toLocaleString('en-PH', {
+        timeZone: 'Asia/Manila',
+        year: 'numeric',
+        month: 'short',
+        day: 'numeric',
+        hour: 'numeric',
+        minute: '2-digit',
+      })
+    const countsAsRevenue = (b) => ['confirmed', 'completed'].includes(b.status) && b.payment_status === 'paid'
+
+    const workbook = new ExcelJS.Workbook()
+    workbook.creator = 'SERV Pickleball Club'
+    workbook.created = new Date()
+
+    const sheet = workbook.addWorksheet('Bookings', { views: [{ state: 'frozen', ySplit: 1 }] })
+    sheet.columns = [
+      { header: 'Date', key: 'date', width: 13, style: { numFmt: 'yyyy-mm-dd' } },
+      { header: 'Court', key: 'court', width: 16 },
+      { header: 'Start', key: 'start', width: 11 },
+      { header: 'End', key: 'end', width: 11 },
+      { header: 'Hours', key: 'hours', width: 8 },
+      { header: 'Customer', key: 'name', width: 24 },
+      { header: 'Phone', key: 'phone', width: 16 },
+      { header: 'Email', key: 'email', width: 28 },
+      { header: 'Reference', key: 'ref', width: 16 },
+      { header: 'Source', key: 'source', width: 10 },
+      { header: 'Status', key: 'status', width: 12 },
+      { header: 'Payment', key: 'payment', width: 10 },
+      { header: 'Paid via', key: 'method', width: 12 },
+      { header: 'Amount (₱)', key: 'amount', width: 13, style: { numFmt: '#,##0.00' } },
+      { header: 'Proof photo', key: 'proof', width: 12 },
+      { header: 'Booked on', key: 'created', width: 22 },
+    ]
+
+    for (const b of rows) {
+      sheet.addRow({
+        date: new Date(`${b.booking_date}T00:00:00Z`),
+        court: b.courts?.name || '',
+        start: startLabel(b.start_time),
+        end: endLabel(b.end_time),
+        hours: hoursOf(b),
+        name: b.guest_name || '',
+        phone: b.guest_phone || '',
+        email: b.guest_email || '',
+        ref: b.reference_code || '',
+        source: isWalkIn(b) ? 'Walk-in' : 'Online',
+        status: b.status,
+        payment: b.payment_status,
+        method: paymentMethodLabel(b),
+        amount: Number(b.amount) || 0,
+        proof: b.receipt_path ? 'Yes' : 'No',
+        created: bookedOn(b.created_at),
+      })
+    }
+    // Phone numbers like 0917... must stay text so Excel keeps the leading zero.
+    sheet.getColumn('phone').numFmt = '@'
+
+    const header = sheet.getRow(1)
+    header.font = { bold: true, color: { argb: 'FFFFFFFF' } }
+    header.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF16324F' } }
+    header.alignment = { vertical: 'middle' }
+    header.height = 22
+    sheet.autoFilter = { from: 'A1', to: `P1` }
+
+    const revenueRows = rows.filter(countsAsRevenue)
+    const revenue = revenueRows.reduce((sum, b) => sum + (Number(b.amount) || 0), 0)
+    const totalRow = sheet.addRow({
+      name: 'TOTAL (confirmed / completed, paid)',
+      hours: revenueRows.reduce((sum, b) => sum + hoursOf(b), 0),
+      amount: revenue,
+    })
+    totalRow.font = { bold: true }
+    totalRow.getCell('amount').border = { top: { style: 'thin' } }
+    totalRow.getCell('hours').border = { top: { style: 'thin' } }
+
+    // ---- Summary sheet: per court, plus paid-by method ----
+    const summary = workbook.addWorksheet('Summary')
+    ;[34, 12, 10, 16].forEach((width, i) => {
+      summary.getColumn(i + 1).width = width
+    })
+    summary.getColumn(4).numFmt = '#,##0.00'
+    summary.addRow([from === to ? `Bookings for ${from}` : `Bookings from ${from} to ${to}`]).font = { bold: true, size: 14 }
+    summary.addRow([])
+    const sectionHead = (labels) => {
+      const r = summary.addRow(labels)
+      r.font = { bold: true }
+      r.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE8EEF4' } }
+    }
+
+    sectionHead(['By court (confirmed / completed, paid)', 'Bookings', 'Hours', 'Amount (₱)'])
+    const byCourt = new Map()
+    for (const b of revenueRows) {
+      const key = b.courts?.name || `Court ${b.court_id}`
+      const cur = byCourt.get(key) || { bookings: 0, hours: 0, amount: 0 }
+      cur.bookings += 1
+      cur.hours += hoursOf(b)
+      cur.amount += Number(b.amount) || 0
+      byCourt.set(key, cur)
+    }
+    for (const [name, v] of [...byCourt].sort((a, b) => a[0].localeCompare(b[0], undefined, { numeric: true }))) {
+      summary.addRow([name, v.bookings, v.hours, v.amount])
+    }
+    summary.addRow([])
+
+    sectionHead(['By payment method', 'Bookings', 'Hours', 'Amount (₱)'])
+    const byMethod = new Map()
+    for (const b of revenueRows) {
+      const key = paymentMethodLabel(b)
+      const cur = byMethod.get(key) || { bookings: 0, hours: 0, amount: 0 }
+      cur.bookings += 1
+      cur.hours += hoursOf(b)
+      cur.amount += Number(b.amount) || 0
+      byMethod.set(key, cur)
+    }
+    for (const [name, v] of byMethod) summary.addRow([name, v.bookings, v.hours, v.amount])
+    summary.addRow([])
+
+    const totals = summary.addRow(['TOTAL', revenueRows.length, revenueRows.reduce((s, b) => s + hoursOf(b), 0), revenue])
+    totals.font = { bold: true }
+    summary.addRow([])
+    const countBy = (status) => rows.filter((b) => b.status === status).length
+    summary.addRow([`Not counted above: ${countBy('pending')} pending, ${countBy('cancelled')} cancelled`]).font = {
+      italic: true,
+      color: { argb: 'FF666666' },
+    }
+
+    const filename = from === to ? `SERV-bookings-${from}.xlsx` : `SERV-bookings-${from}_to_${to}.xlsx`
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`)
+    await workbook.xlsx.write(res)
+    res.end()
   })
 )
 

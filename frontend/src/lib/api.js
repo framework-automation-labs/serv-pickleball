@@ -64,6 +64,13 @@ export function isHourPast(date, hour, now = manilaNow()) {
   return date < now.today || (date === now.today && hour <= now.hour)
 }
 
+// Admin tools only: an hour is closed once it has FINISHED. The hour currently in progress stays
+// open so staff can add a walk-in or move someone onto a court mid-session. (Customers still use
+// isHourPast above, which closes an hour as soon as it starts.)
+export function isHourPassed(date, hour, now = manilaNow()) {
+  return date < now.today || (date === now.today && hour < now.hour)
+}
+
 export function isHourBooked(courtId, hour, availability) {
   return availability.some((b) => {
     if (b.court_id !== courtId) return false
@@ -99,21 +106,24 @@ export async function fetchBookingStatus(groupId) {
 // Admin-only — approving/rejecting a receipt also sends the customer
 // an email, so these go through the backend (which verifies the
 // caller is really an admin) instead of a direct Supabase update.
-async function sendPatch(path, body, accessToken) {
+// `body` may be a plain object (sent as JSON) or FormData (file uploads).
+// `blob: true` returns the response as a file (Excel export).
+async function sendAuthed(method, path, body, accessToken, { blob = false } = {}) {
   // The backend (Render) can take a while to wake up, so allow a long timeout — but never
   // hang forever, or the Approve button would stay disabled with no feedback.
   const controller = new AbortController()
   const timeout = setTimeout(() => controller.abort(), 60000)
 
+  const isForm = typeof FormData !== 'undefined' && body instanceof FormData
+  const headers = { Authorization: `Bearer ${accessToken}` }
+  if (body != null && !isForm) headers['Content-Type'] = 'application/json'
+
   let res
   try {
     res = await fetch(`${API_URL}${path}`, {
-      method: 'PATCH',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${accessToken}`,
-      },
-      body: JSON.stringify(body),
+      method,
+      headers,
+      body: body == null ? undefined : isForm ? body : JSON.stringify(body),
       signal: controller.signal,
     })
   } catch (err) {
@@ -126,23 +136,23 @@ async function sendPatch(path, body, accessToken) {
     clearTimeout(timeout)
   }
 
-  const data = await res.json().catch(() => ({}))
   if (!res.ok) {
+    const data = await res.json().catch(() => ({}))
     const error = new Error(data.error || 'Something went wrong.')
     error.status = res.status // lets callers tell "already reviewed" (409) from real failures
     throw error
   }
-  return data
+  return blob ? res.blob() : res.json().catch(() => ({}))
 }
 
-async function authedPatch(path, body) {
+async function authedRequest(method, path, body, options) {
   const {
     data: { session },
   } = await supabase.auth.getSession()
   if (!session) throw new Error('Your admin session has expired — please log in again.')
 
   try {
-    return await sendPatch(path, body, session.access_token)
+    return await sendAuthed(method, path, body, session.access_token, options)
   } catch (err) {
     if (err.status !== 401) throw err
   }
@@ -156,11 +166,13 @@ async function authedPatch(path, body) {
     await supabase.auth.signOut({ scope: 'local' })
     throw new Error('Your admin session has expired — please log in again.')
   }
-  return sendPatch(path, body, refreshed.session.access_token)
+  return sendAuthed(method, path, body, refreshed.session.access_token, options)
 }
 
-// Moves one booked block to another court / date / start hour (admin only; the server
-// enforces the 6-hour rule and refuses overlaps).
+const authedPatch = (path, body) => authedRequest('PATCH', path, body)
+
+// Moves one booked block to another court / date / start hour (admin only). The 6-hour
+// customer policy is not enforced here; the server only refuses finished hours and overlaps.
 export function rescheduleBooking(bookingId, { courtId, date, startHour, sourceStartHour }) {
   return authedPatch(`/api/bookings/${bookingId}/reschedule`, { courtId, date, startHour, sourceStartHour })
 }
@@ -172,4 +184,19 @@ export function removeBookingHour(bookingId, sourceStartHour) {
 
 export function reviewBookingGroup(groupId, action, reason) {
   return authedPatch(`/api/bookings/${groupId}/review`, { action, reason })
+}
+
+// Walk-in booking entered by an admin at the courts (admin only). `photo` is a picture of the
+// cash or the online payment receipt. Saved as confirmed + paid.
+export function createWalkInBooking({ guestName, phone, courtId, date, startHour, hours, paymentMethod, amount, photo }) {
+  const formData = new FormData()
+  formData.append('payload', JSON.stringify({ guestName, phone, courtId, date, startHour, hours, paymentMethod, amount }))
+  formData.append('photo', photo)
+  return authedRequest('POST', '/api/bookings/walk-in', formData)
+}
+
+// Excel copy of the bookings for one day (or a date range). Returns the .xlsx as a Blob.
+export function exportBookingsExcel(from, to = from) {
+  const params = new URLSearchParams({ from, to })
+  return authedRequest('GET', `/api/bookings/export.xlsx?${params}`, null, { blob: true })
 }

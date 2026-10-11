@@ -6,9 +6,18 @@ import ReceiptViewerModal from '../../components/admin/ReceiptViewerModal.jsx'
 import RejectReasonModal from '../../components/admin/RejectReasonModal.jsx'
 import ConfirmModal from '../../components/admin/ConfirmModal.jsx'
 import RiskFlags from '../../components/admin/RiskFlags.jsx'
-import { removeBookingHour, rescheduleBooking, reviewBookingGroup } from '../../lib/api.js'
+import WalkInBookingModal from '../../components/admin/WalkInBookingModal.jsx'
+import { exportBookingsExcel, removeBookingHour, rescheduleBooking, reviewBookingGroup } from '../../lib/api.js'
 import { supabase } from '../../lib/supabaseClient.js'
-import { formatDay, formatTime, groupByBookingGroup, hoursSince, localDateString } from '../../components/admin/adminUtils.js'
+import {
+  PAYMENT_METHOD_LABELS,
+  formatDay,
+  formatTime,
+  groupByBookingGroup,
+  hoursSince,
+  isWalkIn,
+  localDateString,
+} from '../../components/admin/adminUtils.js'
 
 const STATUS_FILTERS = ['all', 'pending', 'confirmed', 'cancelled', 'completed']
 const REFRESH_MS = 15000 // keep several admin devices close to in sync
@@ -59,7 +68,7 @@ export default function ManageBookings() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [updatingGroupId, setUpdatingGroupId] = useState(null)
-  const [viewingReceiptPath, setViewingReceiptPath] = useState(null)
+  const [viewingReceipt, setViewingReceipt] = useState(null) // { path, title }
   const [rejectingGroupId, setRejectingGroupId] = useState(null)
   const [deleting, setDeleting] = useState(null) // { groupId, receiptPath } awaiting confirmation
 
@@ -68,6 +77,17 @@ export default function ManageBookings() {
   const [schedule, setSchedule] = useState({ courts: [], bookings: [], blocked: [] })
   const [scheduleLoading, setScheduleLoading] = useState(false)
   const [scheduleError, setScheduleError] = useState('')
+
+  // Walk-in bookings entered at the courts
+  const [activeCourts, setActiveCourts] = useState([])
+  const [walkIn, setWalkIn] = useState(null) // null = closed, otherwise { courtId, date, startHour }
+  const [walkInNotice, setWalkInNotice] = useState('')
+
+  // Excel export
+  const [exportFrom, setExportFrom] = useState(localDateString())
+  const [exportTo, setExportTo] = useState('')
+  const [exporting, setExporting] = useState(false)
+  const [exportError, setExportError] = useState('')
 
   async function loadBookings({ silent = false } = {}) {
     if (!silent) setLoading(true)
@@ -97,6 +117,15 @@ export default function ManageBookings() {
     loadBookings()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [date, statusFilter, limit])
+
+  useEffect(() => {
+    supabase
+      .from('courts')
+      .select('id, name, rate_per_hour')
+      .eq('status', 'active')
+      .order('id')
+      .then(({ data }) => setActiveCourts(data || []))
+  }, [])
 
   // silent = background refresh: keep the grid on screen instead of flashing a skeleton
   // (which would also wipe a half-finished tap on a cell).
@@ -143,7 +172,45 @@ export default function ManageBookings() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [date, statusFilter, limit, view, courtDate])
 
-  // Moves one booked block (the server enforces the 6-hour rule), then refreshes both views.
+  function openWalkIn(prefill = {}) {
+    setWalkInNotice('')
+    setWalkIn({ courtId: prefill.courtId ?? activeCourts[0]?.id, date: prefill.date || localDateString(), startHour: prefill.startHour ?? null })
+  }
+
+  async function walkInCreated({ name, courtName, date: bookedDate, startHour, hours }) {
+    setWalkIn(null)
+    const pad = (h) => `${String(h % 24).padStart(2, '0')}:00:00`
+    setWalkInNotice(
+      `Saved: ${name}, ${courtName}, ${formatDay(bookedDate)}, ${formatTime(pad(startHour))} – ${formatTime(pad(startHour + hours))}.`,
+    )
+    if (view === 'courts') setCourtDate(bookedDate)
+    await Promise.all([loadBookings({ silent: true }), view === 'courts' ? loadSchedule({ silent: true }) : null])
+  }
+
+  // Downloads an Excel copy of the bookings for the chosen day (or date range).
+  async function downloadExport() {
+    setExportError('')
+    if (!exportFrom) return setExportError('Pick the date to export.')
+    const to = exportTo || exportFrom
+    if (to < exportFrom) return setExportError('The end date can’t be before the start date.')
+    setExporting(true)
+    try {
+      const blob = await exportBookingsExcel(exportFrom, to)
+      const url = URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.href = url
+      link.download = exportFrom === to ? `SERV-bookings-${exportFrom}.xlsx` : `SERV-bookings-${exportFrom}_to_${to}.xlsx`
+      document.body.appendChild(link)
+      link.click()
+      link.remove()
+      setTimeout(() => URL.revokeObjectURL(url), 10000)
+    } catch (err) {
+      setExportError(err.message || 'Could not export the bookings.')
+    }
+    setExporting(false)
+  }
+
+  // Moves one booked block (admins can move any hour that hasn't finished), then refreshes both views.
   async function rescheduleBlock(booking, target) {
     await rescheduleBooking(booking.id, target)
     await Promise.all([loadSchedule({ silent: true }), loadBookings({ silent: true })])
@@ -263,8 +330,9 @@ export default function ManageBookings() {
 
   return (
     <AdminLayout title="Bookings">
-      {/* View switch */}
-      <div className="mb-4 inline-flex rounded-xl border border-line bg-white p-1 text-sm font-medium" role="tablist">
+      {/* View switch + walk-in */}
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+      <div className="inline-flex rounded-xl border border-line bg-white p-1 text-sm font-medium" role="tablist">
         {[
           ['list', 'All bookings'],
           ['courts', 'Courts table'],
@@ -282,6 +350,61 @@ export default function ManageBookings() {
             {label}
           </button>
         ))}
+      </div>
+      <button
+        type="button"
+        onClick={() => openWalkIn({ date: view === 'courts' ? courtDate : localDateString() })}
+        disabled={activeCourts.length === 0}
+        className="rounded-lg bg-spark px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-spark/90 disabled:opacity-50"
+      >
+        + Walk-in booking
+      </button>
+      </div>
+
+      {walkInNotice && (
+        <p className="mb-4 rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-800">{walkInNotice}</p>
+      )}
+
+      {/* Excel export */}
+      <div className="mb-5 flex flex-wrap items-end gap-3 rounded-2xl border border-line bg-white px-4 py-3">
+        <div className="mr-1 min-w-[10rem]">
+          <p className="text-sm font-medium text-ink">Export to Excel</p>
+          <p className="text-xs text-ink/50">A copy of the bookings for a day (or a range).</p>
+        </div>
+        <div>
+          <label htmlFor="export-from" className="mb-1 block text-xs font-medium text-ink/50">
+            Date
+          </label>
+          <input
+            id="export-from"
+            type="date"
+            value={exportFrom}
+            onChange={(e) => setExportFrom(e.target.value)}
+            className={fieldCls}
+          />
+        </div>
+        <div>
+          <label htmlFor="export-to" className="mb-1 block text-xs font-medium text-ink/50">
+            To (optional)
+          </label>
+          <input
+            id="export-to"
+            type="date"
+            value={exportTo}
+            min={exportFrom || undefined}
+            onChange={(e) => setExportTo(e.target.value)}
+            className={fieldCls}
+          />
+        </div>
+        <button
+          type="button"
+          onClick={downloadExport}
+          disabled={exporting}
+          className="rounded-lg border border-court px-4 py-1.5 text-sm font-medium text-court transition-colors hover:bg-court/5 disabled:opacity-50"
+        >
+          {exporting ? 'Preparing…' : 'Download Excel'}
+        </button>
+        {exportError && <p className="w-full rounded-lg bg-red-50 px-3 py-2 text-sm text-red-600">{exportError}</p>}
       </div>
 
       {view === 'courts' ? (
@@ -319,6 +442,7 @@ export default function ManageBookings() {
             onDateChange={setCourtDate}
             onReschedule={rescheduleBlock}
             onRemoveHour={removeHour}
+            onWalkIn={openWalkIn}
           />
         </>
       ) : (
@@ -433,18 +557,29 @@ export default function ManageBookings() {
                           {first.status === 'cancelled' && first.rejection_reason && (
                             <p className="text-xs text-ink/40">{first.rejection_reason}</p>
                           )}
+                          {isWalkIn(first) && (
+                            <p className="text-xs font-medium text-ink/60">
+                              Walk-in · {PAYMENT_METHOD_LABELS[first.payment_reference] || 'payment not recorded'}
+                              {Number(first.amount) > 0 ? ` · ₱${Number(first.amount).toLocaleString()}` : ''}
+                            </p>
+                          )}
                           {first.receipt_path ? (
                             <>
                               <button
-                                onClick={() => setViewingReceiptPath(first.receipt_path)}
+                                onClick={() =>
+                                  setViewingReceipt({
+                                    path: first.receipt_path,
+                                    title: isWalkIn(first) ? 'Payment photo' : 'GCash Receipt',
+                                  })
+                                }
                                 className="block text-xs font-medium text-court underline"
                               >
-                                View Receipt
+                                {isWalkIn(first) ? 'View payment photo' : 'View Receipt'}
                               </button>
-                              <RiskFlags flags={first.risk_flags} />
+                              {!isWalkIn(first) && <RiskFlags flags={first.risk_flags} />}
                             </>
                           ) : (
-                            <span className="block text-xs text-ink/30">Admin-entered (walk-in)</span>
+                            <span className="block text-xs text-ink/30">No photo attached</span>
                           )}
                         </div>
 
@@ -515,8 +650,12 @@ export default function ManageBookings() {
         </>
       )}
 
-      {viewingReceiptPath && (
-        <ReceiptViewerModal path={viewingReceiptPath} onClose={() => setViewingReceiptPath(null)} />
+      {viewingReceipt && (
+        <ReceiptViewerModal path={viewingReceipt.path} title={viewingReceipt.title} onClose={() => setViewingReceipt(null)} />
+      )}
+
+      {walkIn && (
+        <WalkInBookingModal courts={activeCourts} initial={walkIn} onClose={() => setWalkIn(null)} onCreated={walkInCreated} />
       )}
 
       {deleting && (

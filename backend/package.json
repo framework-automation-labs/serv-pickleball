@@ -11,12 +11,18 @@
     "@supabase/supabase-js": "^2.114.0",
     "cors": "^2.8.5",
     "dotenv": "^16.4.5",
+    "exceljs": "^4.4.0",
     "express": "^4.19.2",
     "express-rate-limit": "^7.4.0",
     "multer": "^2.0.2",
     "pdfkit": "^0.15.0",
     "qrcode": "^1.5.4",
     "sharp": "^0.35.5"
+  },
+  "overrides": {
+    "exceljs": {
+      "uuid": "11.1.1"
+    }
   },
   "engines": {
     "node": ">=18"
