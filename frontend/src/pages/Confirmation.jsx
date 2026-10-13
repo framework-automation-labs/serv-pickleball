@@ -147,8 +147,7 @@ export default function Confirmation() {
               <path d="M12 16v-4M12 8h.01" strokeLinecap="round" strokeLinejoin="round" />
             </svg>
             <p>
-              <span className="font-semibold">No need to rush.</span> You can wait on this screen and your
-              receipt will appear here once the admin approves. We'll also email you when it's approved.
+              <span className="font-semibold">No need to stay here.</span> You can now exit and wait for the email for your receipt, or you can just wait on this screen for it.
             </p>
           </div>
         )}
