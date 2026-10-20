@@ -2,7 +2,6 @@ import 'dotenv/config'
 import express from 'express'
 import cors from 'cors'
 import bookingsRouter from './src/routes/bookings.js'
-import { expireStalePending } from './src/lib/staleCleanup.js'
 import { apiLimiter } from './src/middleware/rateLimiter.js'
 
 const app = express()
@@ -119,11 +118,3 @@ const PORT = process.env.PORT || 5000
 app.listen(PORT, () => {
   console.log(`SERV backend running on http://localhost:${PORT}`)
 })
-
-// Sweeps for stale pending bookings once an hour. Only
-// matters while this process stays running — if you deploy somewhere
-// that spins the server down between requests (serverless), this
-// won't fire; use a real scheduled job (e.g. Supabase pg_cron, or a
-// hosted cron hitting a dedicated endpoint) there instead.
-const CLEANUP_INTERVAL_MS = 60 * 60 * 1000
-setInterval(() => expireStalePending().catch((err) => console.error('[cleanup] failed:', err)), CLEANUP_INTERVAL_MS)
