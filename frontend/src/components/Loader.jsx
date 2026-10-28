@@ -16,3 +16,19 @@ export function SlotSkeleton({ count = 15 }) {
     </div>
   )
 }
+
+export function TimetableSkeleton({ cols = 4, rows = 8 }) {
+  const gridStyle = { gridTemplateColumns: `3.5rem repeat(${cols}, minmax(0, 1fr))` }
+  return (
+    <div className="space-y-1.5" aria-hidden="true">
+      {Array.from({ length: rows }).map((_, r) => (
+        <div key={r} className="grid items-center gap-2" style={gridStyle}>
+          <div className="skeleton ml-auto h-3 w-10 rounded" />
+          {Array.from({ length: cols }).map((__, c) => (
+            <div key={c} className="skeleton h-11 rounded-lg" />
+          ))}
+        </div>
+      ))}
+    </div>
+  )
+}

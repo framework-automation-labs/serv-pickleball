@@ -3,6 +3,48 @@ import { motion, AnimatePresence } from 'motion/react'
 
 const assetUrl = (name) => `${import.meta.env.BASE_URL}${name}`
 const images = ['serv-about.jpg', 'serv-about-2.jpg', 'serv-gallery-1.jpg', 'serv-gallery-2.jpg'].map(assetUrl)
+const iconProps = {
+  width: 26,
+  height: 26,
+  viewBox: '0 0 24 24',
+  fill: 'none',
+  stroke: 'currentColor',
+  strokeWidth: 1.8,
+  strokeLinecap: 'round',
+  strokeLinejoin: 'round',
+  'aria-hidden': true,
+}
+
+// Play: paddle and ball. Compete: trophy. Connect: group of people.
+const icons = {
+  Play: (
+    <svg {...iconProps}>
+      <rect x="3.5" y="2.5" width="10" height="13" rx="3.5" strokeWidth="2.1" transform="rotate(-35 8.5 9)" />
+      <path d="M10.7 14.8l1.4-1.4 6.2 6.2-1.4 1.4z" />
+      <path d="M14.4 17.8L13 19.2" />
+      <circle cx="18.5" cy="6" r="2.5" />
+      <circle cx="17.8" cy="5.4" r=".3" fill="currentColor" stroke="none" />
+      <circle cx="19.3" cy="6.4" r=".3" fill="currentColor" stroke="none" />
+    </svg>
+  ),
+  Compete: (
+    <svg {...iconProps}>
+      <path d="M8 4h8v5a4 4 0 01-8 0V4z" />
+      <path d="M8 6H5a1 1 0 00-1 1c0 2.2 1.6 3.6 4 4" />
+      <path d="M16 6h3a1 1 0 011 1c0 2.2-1.6 3.6-4 4" />
+      <path d="M12 13v4M8.5 20h7M9.5 17h5v3h-5z" />
+    </svg>
+  ),
+  Connect: (
+    <svg {...iconProps}>
+      <circle cx="9" cy="8" r="3" />
+      <path d="M3 19c0-3.3 2.7-5.5 6-5.5s6 2.2 6 5.5" />
+      <circle cx="17" cy="9" r="2.4" />
+      <path d="M16.5 14c2.8.1 4.5 1.9 4.5 4.5" />
+    </svg>
+  ),
+}
+
 const experiences = [
   {
     number: '01',
@@ -146,10 +188,10 @@ export default function AboutSection() {
                 <div className="flex items-start justify-between"><span />
 
                   <motion.div
-                    whileHover={{ rotate: 45 }}
-                    className="flex h-10 w-10 items-center justify-center border border-white/30 text-white"
+                    whileHover={{ scale: 1.08 }}
+                    className="flex h-12 w-12 items-center justify-center border border-white/30 text-white transition-colors group-hover:border-[#E8735C] group-hover:bg-[#E8735C]"
                   >
-                    <span className="text-lg leading-none">↗</span>
+                    {icons[experience.title]}
                   </motion.div>
                 </div>
 

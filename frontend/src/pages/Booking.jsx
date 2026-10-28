@@ -14,7 +14,7 @@ import BackButton from '../components/BackButton.jsx'
 import DatePicker from '../components/DatePicker.jsx'
 import PolicyNotice from '../components/PolicyNotice.jsx'
 import StepProgress from '../components/StepProgress.jsx'
-import { SlotSkeleton } from '../components/Loader.jsx'
+import { TimetableSkeleton } from '../components/Loader.jsx'
 import AnimatedNumber from '../components/AnimatedNumber.jsx'
 
 const assetUrl = (name) => `${import.meta.env.BASE_URL}${name}`
@@ -52,43 +52,16 @@ function groupHours(hours) {
   return blocks
 }
 
-// Slots ripple in diagonally from the top-left. Taken slots only fade (no movement) so they stay calm.
-const gridVariants = {
-  hidden: {},
-  show: {},
-  exit: { opacity: 0, transition: { duration: 0.12 } },
-}
-const slotVariants = {
-  hidden: ({ booked }) => (booked ? { opacity: 0 } : { opacity: 0, y: 8 }),
-  show: ({ booked, delay }) => ({
-    opacity: 1,
-    y: 0,
-    transition: { delay, duration: booked ? 0.25 : 0.3, ease: [0.22, 1, 0.36, 1] },
-  }),
-}
 // One subtle pulse on "Continue" when the bar appears.
 const CONTINUE_PULSE = {
   scale: [1, 1.06, 1],
   transition: { delay: 0.4, duration: 0.5, ease: 'easeInOut' },
 }
 
-function useGridCols() {
-  const query = '(min-width: 640px)'
-  const [cols, setCols] = useState(() => (window.matchMedia(query).matches ? 5 : 3))
-  useEffect(() => {
-    const mq = window.matchMedia(query)
-    const onChange = (e) => setCols(e.matches ? 5 : 3)
-    mq.addEventListener('change', onChange)
-    return () => mq.removeEventListener('change', onChange)
-  }, [])
-  return cols
-}
-
 export default function Booking() {
   const navigate = useNavigate()
   const [date, setDate] = useState(todayISO())
   const [courts, setCourts] = useState([])
-  const [activeCourtId, setActiveCourtId] = useState(null)
   const [availability, setAvailability] = useState([])
   const [selections, setSelections] = useState({}) // { [courtId]: number[] }
   const [loading, setLoading] = useState(true)
@@ -101,14 +74,10 @@ export default function Booking() {
     const t = setInterval(() => setNow(manilaNow()), 30000)
     return () => clearInterval(t)
   }, [])
-  const cols = useGridCols()
 
   useEffect(() => {
     fetchCourts()
-      .then((data) => {
-        setCourts(data)
-        if (data.length) setActiveCourtId(data[0].id)
-      })
+      .then(setCourts)
       .catch((err) => setError(err.message))
   }, [])
 
@@ -135,31 +104,31 @@ export default function Booking() {
     })
   }, [now, date])
 
-  function toggleHour(hour) {
+  function toggleHour(courtId, hour) {
     if (isHourPast(date, hour, now)) return
-    if (isHourBooked(activeCourtId, hour, availability)) return
+    if (isHourBooked(courtId, hour, availability)) return
     setSelections((prev) => {
-      const current = prev[activeCourtId] || []
+      const current = prev[courtId] || []
       const updated = current.includes(hour)
         ? current.filter((h) => h !== hour)
         : [...current, hour].sort((a, b) => a - b)
       const next = { ...prev }
-      if (updated.length === 0) delete next[activeCourtId]
-      else next[activeCourtId] = updated
+      if (updated.length === 0) delete next[courtId]
+      else next[courtId] = updated
       return next
     })
   }
 
-  const activeHours = selections[activeCourtId] || []
   const totalHours = Object.values(selections).reduce((sum, hrs) => sum + hrs.length, 0)
   const totalPrice = Object.entries(selections).reduce(
     (sum, [courtId, hrs]) => sum + hrs.length * rateOf(courts.find((c) => c.id === Number(courtId))),
     0,
   )
-  const activeCourt = courts.find((c) => c.id === activeCourtId)
   const lowestRate = courts.length ? Math.min(...courts.map(rateOf)) : DEFAULT_RATE
   const hasMixedRates = courts.some((c) => rateOf(c) !== lowestRate)
   const hasSelection = totalHours > 0
+  // Times are rows, courts are columns — same layout as the admin schedule, no sideways scrolling.
+  const gridStyle = { gridTemplateColumns: `3.5rem repeat(${courts.length || 4}, minmax(0, 1fr))` }
 
   function handleContinue() {
     const bookings = Object.entries(selections).flatMap(([courtId, hours]) => {
@@ -207,51 +176,6 @@ export default function Booking() {
             Date
           </label>
           <DatePicker value={date} onChange={setDate} />
-
-          <label className="block text-xs font-semibold text-ink/60 uppercase tracking-wide mb-2 mt-5">
-            Court
-          </label>
-          <p className="text-xs text-ink/40 mb-2">
-            Tap a court to select its times. You can book more than one court.
-          </p>
-          <div className="flex gap-2 flex-wrap">
-            {courts.map((court) => {
-              const count = (selections[court.id] || []).length
-              return (
-                <button
-                  key={court.id}
-                  onClick={() => setActiveCourtId(court.id)}
-                  className={`relative px-4 py-2 rounded-full text-sm font-semibold font-display bg-mist transition-colors ${
-                    activeCourtId === court.id ? 'text-white' : 'text-ink/60 hover:bg-line'
-                  }`}
-                >
-                  {activeCourtId === court.id && (
-                    <motion.span
-                      layoutId="court-pill"
-                      style={{ borderRadius: 9999 }}
-                      className="absolute inset-0 bg-court"
-                      transition={{ type: 'spring', stiffness: 400, damping: 32 }}
-                    />
-                  )}
-                  <span className="relative z-10">{court.name}</span>
-                  {rateOf(court) !== lowestRate && (
-                    <span className="relative z-10 ml-1.5 text-xs font-medium opacity-70">₱{rateOf(court)}/hr</span>
-                  )}
-                  {count > 0 && (
-                    <motion.span
-                      key={count}
-                      initial={{ scale: 0.5 }}
-                      animate={{ scale: 1 }}
-                      transition={{ type: 'spring', stiffness: 500, damping: 16 }}
-                      className="relative z-10 ml-1.5 inline-flex items-center justify-center w-5 h-5 rounded-full bg-spark text-white text-[11px] font-bold"
-                    >
-                      {count}
-                    </motion.span>
-                  )}
-                </button>
-              )
-            })}
-          </div>
         </div>
 
         {error && <p className="text-red-600 text-sm mb-4">{error}</p>}
@@ -259,90 +183,126 @@ export default function Booking() {
         <div className="bg-card rounded-2xl shadow-sm border border-line p-4 sm:p-6 mb-6">
           <div className="flex items-center justify-between mb-1">
             <label className="text-xs font-semibold text-ink/60 uppercase tracking-wide">
-              Available Times — {activeCourt?.name}
-              {activeCourt && <span className="ml-1.5 normal-case tracking-normal text-ink/40">· ₱{rateOf(activeCourt)}/hr</span>}
+              Available Times
             </label>
-            {activeHours.length > 0 && (
+            {hasSelection && (
               <button
-                onClick={() =>
-                  setSelections((prev) => {
-                    const next = { ...prev }
-                    delete next[activeCourtId]
-                    return next
-                  })
-                }
+                onClick={() => setSelections({})}
                 className="text-xs font-semibold text-link hover:text-heading"
               >
-                Clear
+                Clear all
               </button>
             )}
           </div>
-          <div className="mb-4 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-ink/50">
+          <div className="mb-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-ink/50">
             <span className="flex items-center gap-1.5"><i className="h-3 w-3 rounded border-2 border-line bg-card" />Available</span>
             <span className="flex items-center gap-1.5"><i className="h-3 w-3 rounded bg-spark" />Selected</span>
             <span className="flex items-center gap-1.5"><i className="h-3 w-3 rounded bg-line" />Taken / Closed</span>
           </div>
           <p className="text-xs text-ink/40 mb-4">
-            Tap as many time slots as you like — they don't need to be back-to-back.
+            Tap any open slot to pick it. You can book several hours and more than one court — they don't need to be back-to-back.
           </p>
 
-          {loading ? (
-            <SlotSkeleton />
+          {loading || courts.length === 0 ? (
+            <TimetableSkeleton cols={courts.length || 4} />
           ) : (
-            <AnimatePresence mode="wait">
-              <motion.div
-                key={`${activeCourtId}-${date}`}
-                variants={gridVariants}
-                initial="hidden"
-                animate="show"
-                exit="exit"
-                className="grid grid-cols-3 sm:grid-cols-5 gap-2"
+            <div role="group" aria-label="Court timetable" key={date}>
+              {/* Court names stay pinned while the times scroll underneath. */}
+              <div
+                className="sticky top-0 z-10 -mx-3 grid items-end gap-2 bg-card px-3 pb-2 pt-1 shadow-[0_6px_6px_-6px_rgb(0_0_0/0.15)]"
+                style={gridStyle}
               >
-                {slots.map((hour, i) => {
-                  const past = isHourPast(date, hour, now)
-                  const booked = past || isHourBooked(activeCourtId, hour, availability)
-                  const selected = activeHours.includes(hour)
-                  const delay = (Math.floor(i / cols) + (i % cols)) * 0.035
+                <span />
+                {courts.map((court) => {
+                  const count = (selections[court.id] || []).length
                   return (
-                    <motion.button
-                      key={hour}
-                      variants={slotVariants}
-                      custom={{ booked, delay }}
-                      whileTap={!booked ? { scale: 0.92 } : {}}
-                      disabled={booked}
-                      onClick={() => toggleHour(hour)}
-                      className={`relative min-h-[44px] py-3 rounded-xl text-sm font-semibold font-display border-2 transition-colors ${
-                        booked
-                          ? 'bg-line/70 text-ink/30 border-transparent cursor-not-allowed line-through'
-                          : selected
-                          ? 'bg-spark text-white border-spark shadow-md shadow-spark/30'
-                          : 'bg-card text-ink/70 border-line hover:border-court'
-                      }`}
-                    >
-                      <motion.span
-                        key={selected ? 'on' : 'off'}
-                        initial={selected ? { scale: 0.85 } : false}
-                        animate={{ scale: 1 }}
-                        transition={{ type: 'spring', stiffness: 500, damping: 14 }}
-                        className="inline-block"
-                      >
-                        {formatHour(hour)} – {formatHour(hour + 1)}
-                      </motion.span>
-                      {selected && (
-                        <motion.span
-                          initial={{ scale: 0, opacity: 0 }}
-                          animate={{ scale: 1, opacity: 1 }}
-                          transition={{ type: 'spring', stiffness: 600, damping: 20 }}
-                          className="absolute -top-1.5 -right-1.5 flex h-4 w-4 items-center justify-center rounded-full bg-white text-[10px] font-bold text-spark shadow"
-                        >
-                          ✓
-                        </motion.span>
-                      )}
-                    </motion.button>
+                    <div key={court.id} className="flex min-w-0 flex-col items-center text-center" title={court.name}>
+                      <span className="font-display text-xs font-semibold leading-tight text-ink sm:text-sm">
+                        {court.name}
+                      </span>
+                      <span className="mt-0.5 text-[10px] font-medium leading-none text-ink/45 sm:text-xs">
+                        ₱{rateOf(court)}/hr
+                      </span>
+                      <span className="mt-1 flex h-4 items-center">
+                        {count > 0 && (
+                          <motion.span
+                            key={count}
+                            initial={{ scale: 0.5 }}
+                            animate={{ scale: 1 }}
+                            transition={{ type: 'spring', stiffness: 500, damping: 16 }}
+                            className="inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-spark px-1 text-[10px] font-bold text-white"
+                          >
+                            {count}
+                          </motion.span>
+                        )}
+                      </span>
+                    </div>
                   )
                 })}
-              </motion.div>
-            </AnimatePresence>
+              </div>
+
+              <div className="space-y-1.5">
+                {slots.map((hour, rowIndex) => {
+                  const past = isHourPast(date, hour, now)
+                  return (
+                    <motion.div
+                      key={hour}
+                      className="grid items-center gap-2"
+                      style={gridStyle}
+                      initial={{ opacity: 0, y: 6 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ duration: 0.25, delay: rowIndex * 0.02, ease: [0.22, 1, 0.36, 1] }}
+                    >
+                      <span
+                        className={`-ml-2 flex flex-col items-start text-[10px] font-semibold leading-[1.15] sm:ml-0 sm:text-[11px] ${
+                          past ? 'text-ink/25' : 'text-ink/60'
+                        }`}
+                      >
+                        <span>{formatHour(hour)}</span>
+                        <span className="font-normal text-ink/35">to</span>
+                        <span>{formatHour(hour + 1)}</span>
+                      </span>
+                      {courts.map((court) => {
+                        const booked = past || isHourBooked(court.id, hour, availability)
+                        const selected = (selections[court.id] || []).includes(hour)
+                        const label = `${court.name}, ${formatHour(hour)} to ${formatHour(hour + 1)}, ${
+                          booked ? (past ? 'closed' : 'taken') : selected ? 'selected' : 'available'
+                        }`
+                        return (
+                          <motion.button
+                            key={court.id}
+                            type="button"
+                            whileTap={!booked ? { scale: 0.92 } : {}}
+                            disabled={booked}
+                            aria-pressed={booked ? undefined : selected}
+                            aria-label={label}
+                            onClick={() => toggleHour(court.id, hour)}
+                            className={`relative flex h-11 items-center justify-center rounded-lg border-2 text-sm font-bold transition-colors ${
+                              booked
+                                ? 'cursor-not-allowed border-transparent bg-line/70'
+                                : selected
+                                ? 'border-spark bg-spark text-white shadow-md shadow-spark/30'
+                                : 'border-line bg-card hover:border-court hover:bg-court/5'
+                            }`}
+                          >
+                            {selected && (
+                              <motion.span
+                                initial={{ scale: 0, opacity: 0 }}
+                                animate={{ scale: 1, opacity: 1 }}
+                                transition={{ type: 'spring', stiffness: 600, damping: 20 }}
+                                aria-hidden="true"
+                              >
+                                ✓
+                              </motion.span>
+                            )}
+                          </motion.button>
+                        )
+                      })}
+                    </motion.div>
+                  )
+                })}
+              </div>
+            </div>
           )}
         </div>
 
@@ -356,7 +316,7 @@ export default function Booking() {
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: 40 }}
             transition={{ type: 'spring', stiffness: 380, damping: 34 }}
-            className="fixed bottom-0 left-0 right-0 bg-court-dark px-4 py-4 sm:px-10"
+            className="fixed bottom-0 left-0 right-0 z-30 bg-court-dark px-4 py-4 sm:px-10"
           >
             <div className="max-w-3xl mx-auto flex items-center justify-between gap-4">
               <div className="min-w-0">

@@ -13,6 +13,7 @@ import ManageCourts from './pages/admin/ManageCourts.jsx'
 import ManageGallery from './pages/admin/ManageGallery.jsx'
 import { AdminAuthProvider } from './context/AdminAuthContext.jsx'
 import ProtectedAdminRoute from './components/admin/ProtectedAdminRoute.jsx'
+import Privacy from './pages/Privacy.jsx'
 
 export default function App() {
   return (
@@ -22,6 +23,7 @@ export default function App() {
       <Route path="/" element={<Home />} />
       <Route path="/book" element={<PageTransition><Booking /></PageTransition>} />
       <Route path="/details" element={<Details />} />
+      <Route path="/privacy" element={<Privacy />} />
       <Route path="/checkout" element={<PageTransition><Checkout /></PageTransition>} />
       <Route path="/confirmation/:bookingId" element={<PageTransition><Confirmation /></PageTransition>} />
 

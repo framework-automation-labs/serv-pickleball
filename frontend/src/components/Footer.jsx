@@ -42,6 +42,7 @@ export default function Footer() {
             <h3 className={headingCls}>Explore</h3>
             <nav aria-label="Footer" className="flex flex-col">
               <Link to="/book" className={linkCls}>Book a court</Link>
+              <Link to="/privacy" className={linkCls}>Privacy policy</Link>
             </nav>
           </div>
           <div>
