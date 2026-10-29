@@ -195,9 +195,10 @@ export default function Booking() {
             )}
           </div>
           <div className="mb-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-ink/50">
-            <span className="flex items-center gap-1.5"><i className="h-3 w-3 rounded border-2 border-line bg-card" />Available</span>
+            <span className="flex items-center gap-1.5"><i className="h-3 w-3 rounded border-2 border-emerald-300 bg-emerald-50 dark:border-emerald-700 dark:bg-emerald-950/60" />Available</span>
             <span className="flex items-center gap-1.5"><i className="h-3 w-3 rounded bg-spark" />Selected</span>
-            <span className="flex items-center gap-1.5"><i className="h-3 w-3 rounded bg-line" />Taken / Closed</span>
+            <span className="flex items-center gap-1.5"><i className="h-3 w-3 rounded border-2 border-red-200 bg-red-50 dark:border-red-900 dark:bg-red-950/60" />Taken</span>
+            <span className="flex items-center gap-1.5"><i className="h-3 w-3 rounded bg-line" />Closed</span>
           </div>
           <p className="text-xs text-ink/40 mb-4">
             Tap any open slot to pick it. You can book several hours and more than one court — they don't need to be back-to-back.
@@ -263,7 +264,8 @@ export default function Booking() {
                         <span>{formatHour(hour + 1)}</span>
                       </span>
                       {courts.map((court) => {
-                        const booked = past || isHourBooked(court.id, hour, availability)
+                        const taken = !past && isHourBooked(court.id, hour, availability)
+                        const booked = past || taken
                         const selected = (selections[court.id] || []).includes(hour)
                         const label = `${court.name}, ${formatHour(hour)} to ${formatHour(hour + 1)}, ${
                           booked ? (past ? 'closed' : 'taken') : selected ? 'selected' : 'available'
@@ -277,14 +279,18 @@ export default function Booking() {
                             aria-pressed={booked ? undefined : selected}
                             aria-label={label}
                             onClick={() => toggleHour(court.id, hour)}
-                            className={`relative flex h-11 items-center justify-center rounded-lg border-2 text-sm font-bold transition-colors ${
-                              booked
+                            className={`relative flex h-11 items-center justify-center rounded-lg border-2 text-[10px] font-semibold transition-colors sm:text-xs ${
+                              past
                                 ? 'cursor-not-allowed border-transparent bg-line/70'
+                                : taken
+                                ? 'cursor-not-allowed border-red-200 bg-red-50 text-red-600 dark:border-red-900/70 dark:bg-red-950/50 dark:text-red-300'
                                 : selected
-                                ? 'border-spark bg-spark text-white shadow-md shadow-spark/30'
-                                : 'border-line bg-card hover:border-court hover:bg-court/5'
+                                ? 'border-spark bg-spark text-sm font-bold text-white shadow-md shadow-spark/30'
+                                : 'border-emerald-200 bg-emerald-50 text-emerald-700 hover:border-emerald-500 hover:bg-emerald-100 dark:border-emerald-800/70 dark:bg-emerald-950/50 dark:text-emerald-300 dark:hover:border-emerald-500'
                             }`}
                           >
+                            {taken && 'Taken'}
+                            {!booked && !selected && 'Available'}
                             {selected && (
                               <motion.span
                                 initial={{ scale: 0, opacity: 0 }}
