@@ -197,7 +197,7 @@ export default function Booking() {
           <div className="mb-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-ink/50">
             <span className="flex items-center gap-1.5"><i className="h-3 w-3 rounded border-2 border-emerald-300 bg-emerald-50 dark:border-emerald-700 dark:bg-emerald-950/60" />Available</span>
             <span className="flex items-center gap-1.5"><i className="h-3 w-3 rounded bg-spark" />Selected</span>
-            <span className="flex items-center gap-1.5"><i className="h-3 w-3 rounded border-2 border-red-200 bg-red-50 dark:border-red-900 dark:bg-red-950/60" />Taken</span>
+            <span className="flex items-center gap-1.5"><i className="h-3 w-3 rounded border-2 border-red-200 bg-red-50 dark:border-red-900 dark:bg-red-950/60" />Booked</span>
             <span className="flex items-center gap-1.5"><i className="h-3 w-3 rounded bg-line" />Closed</span>
           </div>
           <p className="text-xs text-ink/40 mb-4">
@@ -289,7 +289,7 @@ export default function Booking() {
                                 : 'border-emerald-200 bg-emerald-50 text-emerald-700 hover:border-emerald-500 hover:bg-emerald-100 dark:border-emerald-800/70 dark:bg-emerald-950/50 dark:text-emerald-300 dark:hover:border-emerald-500'
                             }`}
                           >
-                            {taken && 'Taken'}
+                            {taken && 'Booked'}
                             {!booked && !selected && 'Available'}
                             {selected && (
                               <motion.span
